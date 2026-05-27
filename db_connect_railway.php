@@ -1,3 +1,4 @@
+
 <?php
 
 $host = "metro.proxy.rlwy.net";
@@ -6,17 +7,12 @@ $dbname = "railway";
 $user = "postgres";
 $pass = "vCiFHpFBjjvvEGIqNILhSUeCIyJTKmxq";
 
-$conn = pg_connect("
-host=$host
-port=$port
-dbname=$dbname
-user=$user
-password=$pass
-sslmode=require
-");
+$conn = pg_connect(
+    "host=$host port=$port dbname=$dbname user=$user password=$pass sslmode=require"
+);
 
 if (!$conn) {
-    header("Content-Type: application/json");
+    header("Content-Type: application/json; charset=utf-8");
 
     echo json_encode([
         "success" => false,

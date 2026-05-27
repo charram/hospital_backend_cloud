@@ -1,6 +1,6 @@
 <?php
 header("Content-Type: application/json; charset=utf-8");
-require_once "db_connect.php";
+require_once "db_connect_railway.php";
 
 // รับ JSON
 $raw = file_get_contents("php://input");
