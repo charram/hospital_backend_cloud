@@ -19,20 +19,22 @@ $provinceCode =
 // =====================
 // QUERY
 // =====================
-
 $query = "
 SELECT
     id,
     name,
     license_number,
     contact_name,
-    contact_email,
-    contact_phone,
-    document_path,
+    email AS contact_email,
+    phone AS contact_phone,
     province,
     province_code,
     status,
-    created_at
+    created_at,
+    lat,
+    lng,
+    has_ambulance,
+    available
 FROM hospitals
 WHERE status = 'approved'
 ";
