@@ -1,30 +1,31 @@
+
 <?php
-$host   = "localhost";
-$port   = "5432";
-$dbname = "hospital_db";
-$user   = "postgres";
-$pass   = "123456";
+header("Content-Type: application/json; charset=utf-8");
 
-$conn = pg_connect("
-    host=$host
-    port=$port
-    dbname=$dbname
-    user=$user
-    password=$pass
-");
+$host = "metro.proxy.rlwy.net";
+$port = "19442";
+$dbname = "railway";
+$user = "postgres";
+$pass = "vCiFHpFBjjvvEGIqNILhSUeCIyJTKmxq";
 
-if (!$conn) {
-    header("Content-Type: application/json");
+try {
+    $pdo = new PDO(
+        "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require",
+        $user,
+        $pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+        ]
+    );
+
+    // compatibility
+    $conn = $pdo;
+
+} catch (PDOException $e) {
     echo json_encode([
         "success" => false,
-        "message" => "Database connection failed"
+        "message" => "Database connection failed",
+        "error" => $e->getMessage()
     ]);
     exit;
 }
-
-// if (!$conn) {
-//   // ❌ ห้าม die
-//   // ❌ ห้าม echo HTML
-//   // ❌ ห้าม throw
-//   return null;
-// }
