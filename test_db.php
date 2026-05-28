@@ -1,5 +1,4 @@
 <?php
-
 include 'db_connect_railway.php';
 
 echo json_encode([
