@@ -1,18 +1,12 @@
-FROM php:8.2-apache-bookworm
+FROM php:8.2-apache
 
-# Install PostgreSQL extensions
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql pgsql \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libpq-dev \
+    && docker-php-ext-install pdo_pgsql pgsql
 
-# Enable rewrite
-RUN a2enmod rewrite
-
-# Copy project
 COPY . /var/www/html/
 
-# Set working directory
 WORKDIR /var/www/html
 
 EXPOSE 80
+
+CMD ["apache2-foreground"]
