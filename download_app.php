@@ -1,3 +1,4 @@
+```php
 <?php
 $file = __DIR__ . '/app-release.apk';
 
@@ -6,10 +7,11 @@ if (!file_exists($file)) {
 }
 
 header('Content-Type: application/vnd.android.package-archive');
-header('Content-Disposition: attachment; filename="OpenHospital.apk"');
+header('Content-Disposition: attachment; filename="OpenHospital-v1.apk"');
 header('Content-Length: ' . filesize($file));
 header('Cache-Control: no-cache');
 
 readfile($file);
 exit;
 ?>
+```
