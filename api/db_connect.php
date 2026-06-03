@@ -1,30 +1,23 @@
 <?php
-$host   = "localhost";
-$port   = "5432";
-$dbname = "hospital_db";
-$user   = "postgres";
-$pass   = "123456";
 
-$conn = pg_connect("
-    host=$host
-    port=$port
-    dbname=$dbname
-    user=$user
-    password=$pass
-");
+header("Content-Type: application/json; charset=utf-8");
+
+$host   = "metro.proxy.rlwy.net";
+$port   = "19442";
+$dbname = "railway";
+$user   = "postgres";
+$pass   = "vCiFHpFBjjvvEGIqNILhSUeCIyJTKmxq";
+
+$conn = pg_connect(
+    "host=$host port=$port dbname=$dbname user=$user password=$pass sslmode=require"
+);
 
 if (!$conn) {
-    header("Content-Type: application/json");
+
     echo json_encode([
         "success" => false,
         "message" => "Database connection failed"
     ]);
+
     exit;
 }
-
-// if (!$conn) {
-//   // ❌ ห้าม die
-//   // ❌ ห้าม echo HTML
-//   // ❌ ห้าม throw
-//   return null;
-// }
