@@ -35,6 +35,17 @@ if (str_contains($file, '/')) {
         }
     }
 }
+// fallback ไปหาไฟล์ใน /tmp/cancer
+if (!$path || !file_exists($path)) {
+
+    $name = basename($file);
+
+    $tmpPath = "/tmp/cancer/" . $name;
+
+    if (file_exists($tmpPath)) {
+        $path = $tmpPath;
+    }
+}
 
 // ❌ ไม่เจอไฟล์
 if (!$path || !file_exists($path)) {
