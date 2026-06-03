@@ -132,6 +132,13 @@ if (
     $target =
         $upload_dir .
         $file_name;
+        echo json_encode([
+    "dir" => $upload_dir,
+    "target" => $target,
+    "dir_exists" => is_dir($upload_dir),
+    "writable" => is_writable($upload_dir),
+]);
+exit;
 
     if (
         !move_uploaded_file(
