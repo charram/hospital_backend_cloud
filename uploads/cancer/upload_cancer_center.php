@@ -77,8 +77,7 @@ if (
     $_FILES["image"]["error"] === UPLOAD_ERR_OK
 ) {
 
-    $upload_dir =
-        __DIR__ . "/../cancer/";
+  $upload_dir = "/tmp/cancer/";
 
     if (!is_dir($upload_dir)) {
         mkdir(
@@ -132,13 +131,7 @@ if (
     $target =
         $upload_dir .
         $file_name;
-        echo json_encode([
-    "dir" => $upload_dir,
-    "target" => $target,
-    "dir_exists" => is_dir($upload_dir),
-    "writable" => is_writable($upload_dir),
-]);
-exit;
+      
 
     if (
         !move_uploaded_file(
