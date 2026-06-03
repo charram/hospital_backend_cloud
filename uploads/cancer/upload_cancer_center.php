@@ -76,93 +76,103 @@ if (
     isset($_FILES["image"]) &&
     $_FILES["image"]["error"] === UPLOAD_ERR_OK
 ) {
+$supabaseUrl =
+getenv("SUPABASE_URL");
 
-  $upload_dir =
-    __DIR__ . "/../../uploads/cancer/";
+$supabaseKey =
+getenv("SUPABASE_SECRET");
 
 
-    if (!is_dir($upload_dir)) {
-        mkdir(
-            $upload_dir,
-            0777,
-            true
-        );
-    }
 
-    $tmp =
-        $_FILES["image"]["tmp_name"];
+   $tmp = $_FILES["image"]["tmp_name"];
 
-    $original =
-        $_FILES["image"]["name"];
+$original =
+    $_FILES["image"]["name"];
 
-    $ext = strtolower(
-        pathinfo(
-            $original,
-            PATHINFO_EXTENSION
-        )
-    );
+$ext = strtolower(
+    pathinfo(
+        $original,
+        PATHINFO_EXTENSION
+    )
+);
 
-    $allowed_ext = [
-        "jpg",
-        "jpeg",
-        "png",
-        "webp"
-    ];
+$allowed_ext = [
+    "jpg",
+    "jpeg",
+    "png",
+    "webp"
+];
 
-    if (
-        !in_array(
-            $ext,
-            $allowed_ext
-        )
-    ) {
-        echo json_encode([
-            "success" => false,
-            "message" =>
-                "invalid image type"
-        ]);
-        exit;
-    }
+if (!in_array($ext, $allowed_ext)) {
 
-    $file_name =
-        time() .
-        "_" .
-        rand(1000, 9999) .
-        "." .
-        $ext;
+    echo json_encode([
+        "success" => false,
+        "message" => "invalid image type"
+    ]);
+    exit;
+}
 
-    $target =
-        $upload_dir .
-        $file_name;
-        error_log("UPLOAD_DIR = " . $upload_dir);
-error_log("TARGET = " . $target);
-$target =
-    $upload_dir .
+$file_name =
+    uniqid() .
+    "." .
+    $ext;
+
+$fileData =
+    file_get_contents($tmp);
+
+$bucket =
+    "hospital-images";
+
+$uploadUrl =
+    $supabaseUrl .
+    "/storage/v1/object/" .
+    $bucket .
+    "/" .
     $file_name;
 
-echo json_encode([
-    "upload_dir" => $upload_dir,
-    "target" => $target,
-    "exists" => is_dir($upload_dir)
+$ch = curl_init($uploadUrl);
+
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => "POST",
+    CURLOPT_POSTFIELDS => $fileData,
+   CURLOPT_HTTPHEADER => [
+    "apikey: " . $supabaseKey,
+    "Authorization: Bearer " . $supabaseKey,
+        "Content-Type: image/" . $ext,
+        "x-upsert: true"
+    ]
 ]);
-exit;
 
-    if (
-        !move_uploaded_file(
-            $tmp,
-            $target
-        )
-    ) {
-        echo json_encode([
-            "success" => false,
-            "message" =>
-                "upload image failed"
-        ]);
-        exit;
-    }
+$response = curl_exec($ch);
 
-    $image_path =
-        "uploads/cancer/" .
-        $file_name;
+$httpCode =
+    curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
+
+curl_close($ch);
+
+if (
+    $httpCode < 200 ||
+    $httpCode >= 300
+) {
+
+    echo json_encode([
+        "success" => false,
+        "message" => "supabase upload failed",
+        "response" => $response
+    ]);
+    exit;
+}
+$image_path =
+    $supabaseUrl .
+    "/storage/v1/object/public/" .
+    $bucket .
+    "/" .
+    $file_name;
+
 }
 
 $is_hero_bool = (
