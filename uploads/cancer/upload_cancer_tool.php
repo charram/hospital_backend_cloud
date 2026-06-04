@@ -33,41 +33,110 @@ if (
 
 $image_path = "";
 
-if (isset($_FILES['image'])) {
+if (
+    isset($_FILES["image"]) &&
+    $_FILES["image"]["error"] == 0
+) {
 
-    $uploadDir =
-        "../../uploads/cancer_tools/";
+    $supabaseUrl =
+        getenv("SUPABASE_URL");
 
-    if (!file_exists($uploadDir)) {
-        mkdir(
-            $uploadDir,
-            0777,
-            true
-        );
+    $supabaseKey =
+        getenv("SUPABASE_SECRET");
+
+    $tmp =
+        $_FILES["image"]["tmp_name"];
+
+    $original =
+        $_FILES["image"]["name"];
+
+    $ext = strtolower(
+        pathinfo(
+            $original,
+            PATHINFO_EXTENSION
+        )
+    );
+
+    $allowed_ext = [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+    ];
+
+    if (!in_array($ext, $allowed_ext)) {
+
+        echo json_encode([
+            "success" => false,
+            "message" => "invalid image type"
+        ]);
+
+        exit;
     }
 
-    $fileName =
-        time() .
-        "_" .
-        rand(1000, 9999) .
-        "_" .
-        basename(
-            $_FILES['image']['name']
+    $file_name =
+        uniqid() .
+        "." .
+        $ext;
+
+    $fileData =
+        file_get_contents($tmp);
+
+    $bucket =
+        "hospital-images";
+
+    $uploadUrl =
+        $supabaseUrl .
+        "/storage/v1/object/" .
+        $bucket .
+        "/" .
+        $file_name;
+
+    $ch = curl_init($uploadUrl);
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => $fileData,
+        CURLOPT_HTTPHEADER => [
+            "apikey: " . $supabaseKey,
+            "Authorization: Bearer " . $supabaseKey,
+            "Content-Type: image/" . $ext,
+            "x-upsert: true"
+        ]
+    ]);
+
+    $response =
+        curl_exec($ch);
+
+    $httpCode =
+        curl_getinfo(
+            $ch,
+            CURLINFO_HTTP_CODE
         );
 
-    $targetPath =
-        $uploadDir . $fileName;
+    curl_close($ch);
 
     if (
-        move_uploaded_file(
-            $_FILES['image']['tmp_name'],
-            $targetPath
-        )
+        $httpCode < 200 ||
+        $httpCode >= 300
     ) {
-        $image_path =
-            "uploads/cancer_tools/" .
-            $fileName;
+
+        echo json_encode([
+            "success" => false,
+            "message" => "supabase upload failed",
+            "response" => $response
+        ]);
+
+        exit;
     }
+
+    $image_path =
+        $supabaseUrl .
+        "/storage/v1/object/public/" .
+        $bucket .
+        "/" .
+        $file_name;
 }
 
 $sql = "
