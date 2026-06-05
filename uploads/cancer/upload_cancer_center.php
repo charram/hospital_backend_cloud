@@ -221,6 +221,16 @@ $7
 )
 RETURNING *
 ";
+echo json_encode([
+    "hospital_id" => $hospital_id,
+    "upload_type" => $upload_type,
+    "title" => $title,
+    "is_hero" => $is_hero,
+    "is_hero_bool" => $is_hero_bool,
+    "meta" => $meta
+]);
+
+exit;
 
 $res = pg_query_params(
     $conn,
