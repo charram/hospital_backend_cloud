@@ -27,7 +27,7 @@ SELECT
     max_price,
     avg_price,
     insurance_note,
-    show_on_home,
+    
     created_at
 FROM cancer_symptoms
 WHERE hospital_id = $1
