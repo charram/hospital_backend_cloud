@@ -34,11 +34,14 @@ if (
     $upload_type === "" ||
     $title === ""
 ) {
-    echo json_encode([
-        "success" => false,
-        "message" => "missing required fields"
-    ]);
-    exit;
+echo json_encode([
+    "success" => false,
+    "message" => "missing required fields",
+    "hospital_id" => $hospital_id,
+    "upload_type" => $upload_type,
+    "title" => $title
+]);
+exit;
 }
 
 $allowed_types = [
