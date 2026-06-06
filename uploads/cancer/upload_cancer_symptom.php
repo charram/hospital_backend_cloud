@@ -5,48 +5,42 @@ header('Content-Type: application/json');
 require_once '../../db_connect.php';
 
 if (!$conn) {
-
     echo json_encode([
         "success" => false,
         "message" => "Database connection failed"
     ]);
-
     exit;
 }
 
-$hospital_id =
-    $_POST['hospital_id'] ?? '';
+/* ==========================
+   รับข้อมูลจาก Flutter
+========================== */
 
-$symptom_key =
-    $_POST['symptom_key'] ?? '';
+$hospital_id     = $_POST['hospital_id'] ?? '';
+$symptom_key     = $_POST['symptom_key'] ?? '';
+$title           = $_POST['title'] ?? '';
+$description     = $_POST['description'] ?? '';
+$symptom_score   = $_POST['symptom_score'] ?? '';
+$related_cancer  = $_POST['related_cancer'] ?? '';
 
-$title =
-    $_POST['title'] ?? '';
+$min_price       = $_POST['min_price'] ?? null;
+$max_price       = $_POST['max_price'] ?? null;
+$avg_price       = $_POST['avg_price'] ?? null;
 
-$description =
-    $_POST['description'] ?? '';
+$insurance_note  = $_POST['insurance_note'] ?? '';
 
-$symptom_score =
-    $_POST['symptom_score'] ?? '';
+/* ==========================
+   Boolean ป้องกันค่าว่าง
+========================== */
 
-$related_cancer =
-    $_POST['related_cancer'] ?? '';
+$is_emergency = filter_var(
+    $_POST['is_emergency'] ?? false,
+    FILTER_VALIDATE_BOOLEAN
+);
 
-    $min_price =
-    $_POST['min_price'] ?? null;
-
-$max_price =
-    $_POST['max_price'] ?? null;
-
-$avg_price =
-    $_POST['avg_price'] ?? null;
-
-$insurance_note =
-    $_POST['insurance_note'] ?? '';
-
-$is_emergency =
-    ($_POST['is_emergency'] ?? 'false') === 'true';
-    
+/* ==========================
+   Upload รูป Supabase
+========================== */
 
 $image_path = '';
 
@@ -55,17 +49,11 @@ if (
     $_FILES["image"]["error"] == 0
 ) {
 
-    $supabaseUrl =
-        getenv("SUPABASE_URL");
+    $supabaseUrl = getenv("SUPABASE_URL");
+    $supabaseKey = getenv("SUPABASE_SECRET");
 
-    $supabaseKey =
-        getenv("SUPABASE_SECRET");
-
-    $tmp =
-        $_FILES["image"]["tmp_name"];
-
-    $original =
-        $_FILES["image"]["name"];
+    $tmp      = $_FILES["image"]["tmp_name"];
+    $original = $_FILES["image"]["name"];
 
     $ext = strtolower(
         pathinfo(
@@ -81,12 +69,7 @@ if (
         "webp"
     ];
 
-    if (
-        !in_array(
-            $ext,
-            $allowed_ext
-        )
-    ) {
+    if (!in_array($ext, $allowed_ext)) {
 
         echo json_encode([
             "success" => false,
@@ -97,12 +80,9 @@ if (
     }
 
     $file_name =
-        uniqid() .
-        "." .
-        $ext;
+        uniqid() . "." . $ext;
 
-    $bucket =
-        "hospital-images";
+    $bucket = "hospital-images";
 
     $uploadUrl =
         $supabaseUrl .
@@ -114,14 +94,13 @@ if (
     $fileData =
         file_get_contents($tmp);
 
-    $ch =
-        curl_init($uploadUrl);
+    $ch = curl_init($uploadUrl);
 
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => "POST",
-        CURLOPT_POSTFIELDS => $fileData,
-        CURLOPT_HTTPHEADER => [
+        CURLOPT_CUSTOMREQUEST  => "POST",
+        CURLOPT_POSTFIELDS     => $fileData,
+        CURLOPT_HTTPHEADER     => [
             "apikey: " . $supabaseKey,
             "Authorization: Bearer " . $supabaseKey,
             "Content-Type: image/" . $ext,
@@ -129,14 +108,12 @@ if (
         ]
     ]);
 
-    $response =
-        curl_exec($ch);
+    $response = curl_exec($ch);
 
-    $httpCode =
-        curl_getinfo(
-            $ch,
-            CURLINFO_HTTP_CODE
-        );
+    $httpCode = curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
 
     curl_close($ch);
 
@@ -162,6 +139,10 @@ if (
         $file_name;
 }
 
+/* ==========================
+   INSERT PostgreSQL
+========================== */
+
 $sql = "
 INSERT INTO cancer_symptoms
 (
@@ -184,25 +165,24 @@ VALUES
 )
 ";
 
-$result =
-    pg_query_params(
-        $conn,
-        $sql,
-      [
-    $hospital_id,
-    $symptom_key,
-    $title,
-    $description,
-    $symptom_score,
-    $related_cancer,
-    $image_path,
-    $min_price,
-    $max_price,
-    $avg_price,
-    $insurance_note,
-    $is_emergency
-]
-    );
+$result = pg_query_params(
+    $conn,
+    $sql,
+    [
+        $hospital_id,
+        $symptom_key,
+        $title,
+        $description,
+        $symptom_score,
+        $related_cancer,
+        $image_path,
+        $min_price,
+        $max_price,
+        $avg_price,
+        $insurance_note,
+        $is_emergency
+    ]
+);
 
 echo json_encode([
     "success" => $result ? true : false,
