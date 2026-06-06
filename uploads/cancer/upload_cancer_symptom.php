@@ -32,6 +32,22 @@ $symptom_score =
 $related_cancer =
     $_POST['related_cancer'] ?? '';
 
+    $min_price =
+    $_POST['min_price'] ?? null;
+
+$max_price =
+    $_POST['max_price'] ?? null;
+
+$avg_price =
+    $_POST['avg_price'] ?? null;
+
+$insurance_note =
+    $_POST['insurance_note'] ?? '';
+
+$is_emergency =
+    ($_POST['is_emergency'] ?? 'false') === 'true';
+    
+
 $image_path = '';
 
 if (
@@ -155,11 +171,16 @@ INSERT INTO cancer_symptoms
     description,
     symptom_score,
     related_cancer,
-    image_path
+    image_path,
+    min_price,
+    max_price,
+    avg_price,
+    insurance_note,
+    is_emergency
 )
 VALUES
 (
-    $1,$2,$3,$4,$5,$6,$7
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
 )
 ";
 
@@ -167,15 +188,20 @@ $result =
     pg_query_params(
         $conn,
         $sql,
-        [
-            $hospital_id,
-            $symptom_key,
-            $title,
-            $description,
-            $symptom_score,
-            $related_cancer,
-            $image_path
-        ]
+      [
+    $hospital_id,
+    $symptom_key,
+    $title,
+    $description,
+    $symptom_score,
+    $related_cancer,
+    $image_path,
+    $min_price,
+    $max_price,
+    $avg_price,
+    $insurance_note,
+    $is_emergency
+]
     );
 
 echo json_encode([
