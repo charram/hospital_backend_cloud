@@ -16,27 +16,37 @@ if (!$conn) {
    รับข้อมูลจาก Flutter
 ========================== */
 
-$hospital_id     = $_POST['hospital_id'] ?? '';
-$symptom_key     = $_POST['symptom_key'] ?? '';
-$title           = $_POST['title'] ?? '';
-$description     = $_POST['description'] ?? '';
-$symptom_score   = $_POST['symptom_score'] ?? '';
-$related_cancer  = $_POST['related_cancer'] ?? '';
+$hospital_id    = $_POST['hospital_id'] ?? '';
+$symptom_key    = $_POST['symptom_key'] ?? '';
+$title          = $_POST['title'] ?? '';
+$description    = $_POST['description'] ?? '';
+$symptom_score  = $_POST['symptom_score'] ?? '';
+$related_cancer = $_POST['related_cancer'] ?? '';
 
-$min_price       = $_POST['min_price'] ?? null;
-$max_price       = $_POST['max_price'] ?? null;
-$avg_price       = $_POST['avg_price'] ?? null;
+$min_price      = $_POST['min_price'] ?? null;
+$max_price      = $_POST['max_price'] ?? null;
+$avg_price      = $_POST['avg_price'] ?? null;
 
-$insurance_note  = $_POST['insurance_note'] ?? '';
+$insurance_note = $_POST['insurance_note'] ?? '';
 
 /* ==========================
-   Boolean ป้องกันค่าว่าง
+   แก้ปัญหา Boolean พัง
 ========================== */
 
-$is_emergency = filter_var(
-    $_POST['is_emergency'] ?? false,
-    FILTER_VALIDATE_BOOLEAN
-);
+$is_emergency = false;
+
+if (isset($_POST['is_emergency'])) {
+
+    $value = trim($_POST['is_emergency']);
+
+    if (
+        $value === 'true' ||
+        $value === '1' ||
+        strtolower($value) === 't'
+    ) {
+        $is_emergency = true;
+    }
+}
 
 /* ==========================
    Upload รูป Supabase
@@ -79,8 +89,7 @@ if (
         exit;
     }
 
-    $file_name =
-        uniqid() . "." . $ext;
+    $file_name = uniqid() . "." . $ext;
 
     $bucket = "hospital-images";
 
@@ -91,8 +100,7 @@ if (
         "/" .
         $file_name;
 
-    $fileData =
-        file_get_contents($tmp);
+    $fileData = file_get_contents($tmp);
 
     $ch = curl_init($uploadUrl);
 
