@@ -34,6 +34,21 @@ $related_cancer =
 
 $image_path = '';
 
+$min_price =
+    $_POST['min_price'] ?? null;
+
+$max_price =
+    $_POST['max_price'] ?? null;
+
+$avg_price =
+    $_POST['avg_price'] ?? null;
+
+$insurance_note =
+    $_POST['insurance_note'] ?? '';
+
+$is_emergency =
+    ($_POST['is_emergency'] ?? 'false') === 'true';
+
 if (
     isset($_FILES["image"]) &&
     $_FILES["image"]["error"] == 0
