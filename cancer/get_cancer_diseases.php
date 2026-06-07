@@ -29,8 +29,8 @@ SELECT
     title,
     description,
     risk_level,
-    symptoms,
-    machines,
+    symptoms::text AS symptoms,
+    machines::text AS machines,
     image_path,
     show_on_home,
     created_at
@@ -57,6 +57,13 @@ if (!$res) {
 $data = [];
 
 while ($row = pg_fetch_assoc($res)) {
+
+    $row["symptoms"] =
+        $row["symptoms"] ?? "[]";
+
+    $row["machines"] =
+        $row["machines"] ?? "[]";
+
     $data[] = $row;
 }
 
