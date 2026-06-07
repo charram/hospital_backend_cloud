@@ -1,8 +1,11 @@
 <?php
 
-header('Content-Type: application/json');
+header("Content-Type: application/json; charset=utf-8");
 
-include '../../db_connect.php';
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+require_once __DIR__ . "/../../db_connect.php";
 
 if (!$conn) {
     echo json_encode([
@@ -13,24 +16,24 @@ if (!$conn) {
 }
 
 $hospital_id =
-$_POST['hospital_id'] ?? '';
+    $_POST["hospital_id"] ?? "";
 
 $specialty_key =
-$_POST['specialty_key'] ?? '';
+    $_POST["specialty_key"] ?? "";
 
 $title =
-$_POST['title'] ?? '';
+    trim($_POST["title"] ?? "");
 
 $description =
-$_POST['description'] ?? '';
+    trim($_POST["description"] ?? "");
 
 $price =
-$_POST['price'] ?? '';
+    trim($_POST["price"] ?? "");
 
 if (
-    empty($hospital_id) ||
-    empty($specialty_key) ||
-    empty($title)
+    $hospital_id === "" ||
+    $specialty_key === "" ||
+    $title === ""
 ) {
     echo json_encode([
         "success" => false,
@@ -41,64 +44,123 @@ if (
 
 $image_path = "";
 
+/* ==========================
+   UPLOAD IMAGE TO SUPABASE
+========================== */
+
 if (
-    isset($_FILES['image']) &&
-    $_FILES['image']['error'] === 0
+    isset($_FILES["image"]) &&
+    $_FILES["image"]["error"] === UPLOAD_ERR_OK
 ) {
 
-    $targetDir =
-    "../../uploads/cancer_specialty/";
+    $supabaseUrl = getenv("SUPABASE_URL");
+    $supabaseKey = getenv("SUPABASE_SECRET");
 
     if (
-        !file_exists($targetDir)
+        !$supabaseUrl ||
+        !$supabaseKey
     ) {
-        mkdir(
-            $targetDir,
-            0777,
-            true
-        );
-    }
-
-    $ext = pathinfo(
-        $_FILES['image']['name'],
-        PATHINFO_EXTENSION
-    );
-
-    $fileName =
-        time() .
-        "_" .
-        rand(1000, 9999) .
-        "." .
-        $ext;
-
-    $targetFile =
-        $targetDir .
-        $fileName;
-
-    if (
-        move_uploaded_file(
-            $_FILES['image']['tmp_name'],
-            $targetFile
-        )
-    ) {
-
-        $image_path =
-            "uploads/cancer_specialty/" .
-            $fileName;
-
-    } else {
-
         echo json_encode([
             "success" => false,
-            "message" => "Image upload failed"
+            "message" => "Supabase ENV not found"
         ]);
         exit;
     }
+
+    $ext = strtolower(
+        pathinfo(
+            $_FILES["image"]["name"],
+            PATHINFO_EXTENSION
+        )
+    );
+
+    $allowed = [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+    ];
+
+    if (!in_array($ext, $allowed)) {
+
+        echo json_encode([
+            "success" => false,
+            "message" => "Invalid image type"
+        ]);
+
+        exit;
+    }
+
+    $fileName =
+        "specialty_" .
+        uniqid() .
+        "." .
+        $ext;
+
+    $bucket = "hospital-images";
+
+    $uploadUrl =
+        $supabaseUrl .
+        "/storage/v1/object/" .
+        $bucket .
+        "/" .
+        $fileName;
+
+    $fileData = file_get_contents(
+        $_FILES["image"]["tmp_name"]
+    );
+
+    $ch = curl_init($uploadUrl);
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => $fileData,
+        CURLOPT_HTTPHEADER => [
+            "apikey: " . $supabaseKey,
+            "Authorization: Bearer " . $supabaseKey,
+            "Content-Type: image/" . $ext,
+            "x-upsert: true"
+        ]
+    ]);
+
+    $response = curl_exec($ch);
+
+    $httpCode = curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
+
+    curl_close($ch);
+
+    if (
+        $httpCode < 200 ||
+        $httpCode >= 300
+    ) {
+
+        echo json_encode([
+            "success" => false,
+            "message" => "Supabase upload failed",
+            "response" => $response
+        ]);
+
+        exit;
+    }
+
+    $image_path =
+        $supabaseUrl .
+        "/storage/v1/object/public/" .
+        $bucket .
+        "/" .
+        $fileName;
 }
 
+/* ==========================
+   INSERT TO POSTGRESQL
+========================== */
+
 $sql = "
-INSERT INTO
-cancer_specialty_details (
+INSERT INTO cancer_specialty_details (
 
     hospital_id,
     specialty_key,
@@ -108,7 +170,6 @@ cancer_specialty_details (
     price
 
 )
-
 VALUES (
 
     $1,
@@ -119,12 +180,10 @@ VALUES (
     $6
 
 )
-
 RETURNING id
 ";
 
-$result =
-pg_query_params(
+$result = pg_query_params(
     $conn,
     $sql,
     [
@@ -141,23 +200,19 @@ pg_query_params(
 
 if ($result) {
 
-    $row =
-    pg_fetch_assoc(
-        $result
-    );
+    $row = pg_fetch_assoc($result);
 
     echo json_encode([
         "success" => true,
         "message" => "Upload success",
-        "id" => $row['id']
-    ]);
+        "id" => $row["id"],
+        "image_path" => $image_path
+    ], JSON_UNESCAPED_UNICODE);
 
 } else {
 
     echo json_encode([
         "success" => false,
-        "message" => pg_last_error(
-            $conn
-        )
+        "message" => pg_last_error($conn)
     ]);
 }
