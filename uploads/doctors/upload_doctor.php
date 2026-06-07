@@ -1,135 +1,161 @@
 <?php
 
-header('Content-Type: application/json');
+header("Content-Type: application/json; charset=utf-8");
 
-require_once '../../db_connect.php';
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+require_once __DIR__ . "/../../db_connect.php";
 
 if (!$conn) {
     echo json_encode([
         "success" => false,
-        "message" =>
-            "Database connection failed"
+        "message" => "Database connection failed"
     ]);
     exit;
 }
 
-$hospital_id =
-    $_POST['hospital_id']
-    ?? '';
+$hospital_id = $_POST["hospital_id"] ?? "";
 
-$doctor_name =
-    $_POST['doctor_name']
-    ?? '';
+$doctor_name = trim($_POST["doctor_name"] ?? "");
+$specialty = trim($_POST["specialty"] ?? "");
+$experience = trim($_POST["experience"] ?? "");
+$education = trim($_POST["education"] ?? "");
+$language = trim($_POST["language"] ?? "");
+$phone = trim($_POST["phone"] ?? "");
+$description = trim($_POST["description"] ?? "");
 
-$specialty =
-    $_POST['specialty']
-    ?? '';
-
-$experience =
-    $_POST['experience']
-    ?? '';
-
-$education =
-    $_POST['education']
-    ?? '';
-
-$language =
-    $_POST['language']
-    ?? '';
-
-$phone =
-    $_POST['phone']
-    ?? '';
-
-$description =
-    $_POST['description']
-    ?? '';
-
-/// optional fields
-$sub_specialty =
-    $_POST['sub_specialty']
-    ?? '';
-
-$line =
-    $_POST['line']
-    ?? '';
-
-$related_diseases =
-    $_POST['related_diseases']
-    ?? '[]';
+$sub_specialty = trim($_POST["sub_specialty"] ?? "");
+$line = trim($_POST["line"] ?? "");
+$related_diseases = $_POST["related_diseases"] ?? "[]";
 
 if (
-    empty(
-        $hospital_id
-    ) ||
-    empty(
-        $doctor_name
-    )
+    $hospital_id === "" ||
+    $doctor_name === ""
 ) {
     echo json_encode([
         "success" => false,
-        "message" =>
-            "Missing required fields"
+        "message" => "Missing required fields"
     ]);
     exit;
 }
 
 $image_path = "";
 
+/* ==========================
+   UPLOAD IMAGE TO SUPABASE
+========================== */
+
 if (
-    isset(
-        $_FILES["image"]
-    )
+    isset($_FILES["image"]) &&
+    $_FILES["image"]["error"] === UPLOAD_ERR_OK
 ) {
 
-    $uploadDir =
-        "../../uploads/doctors/";
+    $supabaseUrl = getenv("SUPABASE_URL");
+    $supabaseKey = getenv("SUPABASE_SECRET");
 
     if (
-        !file_exists(
-            $uploadDir
-        )
+        !$supabaseUrl ||
+        !$supabaseKey
     ) {
+        echo json_encode([
+            "success" => false,
+            "message" => "Supabase ENV not found"
+        ]);
+        exit;
+    }
 
-        mkdir(
-            $uploadDir,
-            0777,
-            true
-        );
+    $ext = strtolower(
+        pathinfo(
+            $_FILES["image"]["name"],
+            PATHINFO_EXTENSION
+        )
+    );
+
+    $allowed = [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+    ];
+
+    if (!in_array($ext, $allowed)) {
+
+        echo json_encode([
+            "success" => false,
+            "message" => "Invalid image type"
+        ]);
+
+        exit;
     }
 
     $fileName =
-        time() .
-        "_" .
-        rand(
-            1000,
-            9999
-        ) .
-        "_" .
-        basename(
-            $_FILES[
-                "image"
-            ]["name"]
-        );
+        "doctor_" .
+        uniqid() .
+        "." .
+        $ext;
 
-    $targetPath =
-        $uploadDir .
+    $bucket = "hospital-images";
+
+    $uploadUrl =
+        $supabaseUrl .
+        "/storage/v1/object/" .
+        $bucket .
+        "/" .
         $fileName;
 
+    $fileData = file_get_contents(
+        $_FILES["image"]["tmp_name"]
+    );
+
+    $ch = curl_init($uploadUrl);
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => $fileData,
+        CURLOPT_HTTPHEADER => [
+            "apikey: " . $supabaseKey,
+            "Authorization: Bearer " . $supabaseKey,
+            "Content-Type: image/" . $ext,
+            "x-upsert: true"
+        ]
+    ]);
+
+    $response = curl_exec($ch);
+
+    $httpCode = curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
+
+    curl_close($ch);
+
     if (
-        move_uploaded_file(
-            $_FILES[
-                "image"
-            ]["tmp_name"],
-            $targetPath
-        )
+        $httpCode < 200 ||
+        $httpCode >= 300
     ) {
 
-        $image_path =
-            "uploads/doctors/" .
-            $fileName;
+        echo json_encode([
+            "success" => false,
+            "message" => "Supabase upload failed",
+            "response" => $response
+        ]);
+
+        exit;
     }
+
+    $image_path =
+        $supabaseUrl .
+        "/storage/v1/object/public/" .
+        $bucket .
+        "/" .
+        $fileName;
 }
+
+/* ==========================
+   INSERT TO POSTGRESQL
+========================== */
 
 $sql = "
 INSERT INTO doctor_profiles (
@@ -150,47 +176,37 @@ VALUES (
 RETURNING id
 ";
 
-$result =
-    pg_query_params(
-        $conn,
-        $sql,
-        [
-            $hospital_id,
-            $doctor_name,
-            $specialty,
-            $experience,
-            $education,
-            $language,
-            $phone,
-            $description,
-            $image_path
-        ]
-    );
+$result = pg_query_params(
+    $conn,
+    $sql,
+    [
+        $hospital_id,
+        $doctor_name,
+        $specialty,
+        $experience,
+        $education,
+        $language,
+        $phone,
+        $description,
+        $image_path
+    ]
+);
 
 if ($result) {
 
-    $row =
-        pg_fetch_assoc(
-            $result
-        );
+    $row = pg_fetch_assoc($result);
 
     echo json_encode([
         "success" => true,
-        "message" =>
-            "Doctor uploaded successfully",
-        "id" =>
-            $row["id"],
-        "image_path" =>
-            $image_path
-    ]);
+        "message" => "Doctor uploaded successfully",
+        "id" => $row["id"],
+        "image_path" => $image_path
+    ], JSON_UNESCAPED_UNICODE);
 
 } else {
 
     echo json_encode([
         "success" => false,
-        "message" =>
-            pg_last_error(
-                $conn
-            )
+        "message" => pg_last_error($conn)
     ]);
 }
