@@ -1,12 +1,13 @@
 <?php
-// 🔥 กัน output แปลก ๆ
-ob_clean();
+
+// ปิดการแสดง Error ออกหน้าจอ
 error_reporting(0);
 ini_set('display_errors', 0);
 
+// ส่งเป็น JSON เสมอ
 header("Content-Type: application/json; charset=utf-8");
 
-// 🔥 path ต้องถูก
+// เชื่อมต่อฐานข้อมูล
 require_once("../db_connect.php");
 
 // ==================== รับค่า ====================
@@ -25,39 +26,53 @@ $session_id = (int)$session_id;
 // ==================== SQL ====================
 $sql = "
     SELECT 
-        id, 
-        hospital_id, 
-        user_id, 
-        status, 
-        ems_id, 
+        id,
+        hospital_id,
+        user_id,
+        status,
+        ems_id,
         ambulance_code,
-        user_init_lat, 
+        user_init_lat,
         user_init_lng,
-        user_live_lat, 
+        user_live_lat,
         user_live_lng,
-        ambulance_live_lat, 
+        ambulance_live_lat,
         ambulance_live_lng,
-        created_at, 
+        created_at,
         updated_at,
-        CASE 
-            WHEN status = 'assigned' THEN 'รถพยาบาลกำลังเดินทาง'
-            WHEN status = 'active'   THEN 'กำลังช่วยเหลือ'
-            WHEN status = 'completed' THEN 'เคสเสร็จสิ้น'
-            ELSE 'รอการมอบหมาย'
+        CASE
+            WHEN status = 'pending'
+                THEN 'รอการมอบหมาย'
+
+            WHEN status = 'assigned'
+                THEN 'มอบหมายรถพยาบาลแล้ว'
+
+            WHEN status = 'enroute'
+                THEN 'รถพยาบาลกำลังเดินทาง'
+
+            WHEN status = 'active'
+                THEN 'กำลังช่วยเหลือ'
+
+            WHEN status = 'completed'
+                THEN 'เคสเสร็จสิ้น'
+
+            WHEN status = 'cancelled_by_admin'
+                THEN 'ยกเลิกโดยโรงพยาบาล'
+
+            ELSE status
         END AS status_text
-    FROM emergency_sessions 
-    WHERE id = $1 
+    FROM emergency_sessions
+    WHERE id = $1
     LIMIT 1
 ";
 
-// ==================== execute ====================
+// ==================== Query ====================
 $res = pg_query_params($conn, $sql, [$session_id]);
 
 if (!$res) {
     echo json_encode([
         "success" => false,
-        "message" => "Database error",
-        "error" => pg_last_error($conn)
+        "message" => "Database error"
     ]);
     exit;
 }
@@ -72,34 +87,53 @@ if (!$row) {
     exit;
 }
 
-// ==================== format ====================
+// ==================== Format ====================
 $data = [
-    "id"                 => (int)$row["id"],
-    "hospital_id"        => (int)$row["hospital_id"],
-    "user_id"            => (int)$row["user_id"],
-    "status"             => $row["status"],
-    "status_text"        => $row["status_text"],
+    "id" => (int)$row["id"],
+    "hospital_id" => (int)$row["hospital_id"],
+    "user_id" => (int)$row["user_id"],
 
-    "ems_id"             => $row["ems_id"] ? (int)$row["ems_id"] : null,
-    "ambulance_code"     => $row["ambulance_code"] ?? null,
+    "status" => $row["status"],
+    "status_text" => $row["status_text"],
 
-    "user_init_lat"      => $row["user_init_lat"] ? (float)$row["user_init_lat"] : null,
-    "user_init_lng"      => $row["user_init_lng"] ? (float)$row["user_init_lng"] : null,
+    "ems_id" => !empty($row["ems_id"])
+        ? (int)$row["ems_id"]
+        : null,
 
-    "user_live_lat"      => $row["user_live_lat"] ? (float)$row["user_live_lat"] : null,
-    "user_live_lng"      => $row["user_live_lng"] ? (float)$row["user_live_lng"] : null,
+    "ambulance_code" => $row["ambulance_code"],
 
-    "ambulance_live_lat" => $row["ambulance_live_lat"] ? (float)$row["ambulance_live_lat"] : null,
-    "ambulance_live_lng" => $row["ambulance_live_lng"] ? (float)$row["ambulance_live_lng"] : null,
+    "user_init_lat" => $row["user_init_lat"] !== null
+        ? (float)$row["user_init_lat"]
+        : null,
 
-    "created_at"         => $row["created_at"],
-    "updated_at"         => $row["updated_at"],
+    "user_init_lng" => $row["user_init_lng"] !== null
+        ? (float)$row["user_init_lng"]
+        : null,
+
+    "user_live_lat" => $row["user_live_lat"] !== null
+        ? (float)$row["user_live_lat"]
+        : null,
+
+    "user_live_lng" => $row["user_live_lng"] !== null
+        ? (float)$row["user_live_lng"]
+        : null,
+
+    "ambulance_live_lat" => $row["ambulance_live_lat"] !== null
+        ? (float)$row["ambulance_live_lat"]
+        : null,
+
+    "ambulance_live_lng" => $row["ambulance_live_lng"] !== null
+        ? (float)$row["ambulance_live_lng"]
+        : null,
+
+    "created_at" => $row["created_at"],
+    "updated_at" => $row["updated_at"],
 ];
 
-// ==================== response ====================
+// ==================== Response ====================
 echo json_encode([
     "success" => true,
-    "data"    => $data
-]);
+    "data" => $data
+], JSON_UNESCAPED_UNICODE);
 
 exit;
