@@ -1,7 +1,6 @@
 <?php
-ob_clean();
-error_reporting(0);
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 header("Content-Type: application/json; charset=utf-8");
 
@@ -56,7 +55,6 @@ $sql = "
 
 try {
 
-    // ==================== execute ====================
     $stmt = $conn->prepare($sql);
     $stmt->execute([$session_id]);
 
@@ -70,7 +68,6 @@ try {
         exit;
     }
 
-    // ==================== format ====================
     $data = [
         "id"                 => (int)$row["id"],
         "hospital_id"        => (int)$row["hospital_id"],
@@ -115,7 +112,7 @@ try {
 
     echo json_encode([
         "success" => true,
-        "data" => $data
+        "data"    => $data
     ]);
 
 } catch (Exception $e) {
@@ -123,7 +120,7 @@ try {
     echo json_encode([
         "success" => false,
         "message" => "Database error",
-        "error" => $e->getMessage()
+        "error"   => $e->getMessage()
     ]);
 }
 
