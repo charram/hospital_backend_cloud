@@ -7,6 +7,7 @@ $sql = "
 SELECT
   es.id,
   es.status,
+  es.hospital_id,
   es.user_id,
   es.ems_id,
   es.created_at,
