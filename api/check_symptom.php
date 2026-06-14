@@ -2,7 +2,7 @@
 
 header("Content-Type: application/json; charset=UTF-8");
 
-require_once __DIR__ . '/../db_connect_railway.php';
+require_once("../db_connect.php");
 
 // =====================
 // CHECK DB CONNECTION
