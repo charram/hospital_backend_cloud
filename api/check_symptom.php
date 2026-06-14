@@ -22,16 +22,59 @@ if (!$conn) {
 // GET INPUT
 // =====================
 
-$symptom =
-    trim(
-        $_GET["symptom_name"] ?? ""
-    );
+$symptom = trim($_GET["symptom_name"] ?? "");
 
-if ($symptom == "") {
+if ($symptom === "") {
 
     echo json_encode([
         "success" => false,
         "message" => "Symptom empty"
+    ]);
+
+    exit;
+}
+
+// =====================
+// SPLIT KEYWORDS
+// =====================
+// เช่น
+// "เจ็บหน้าอก หายใจไม่ออก"
+// "chest pain shortness of breath"
+
+$keywords = preg_split('/[\s,]+/u', $symptom);
+
+$conditions = [];
+$params = [];
+
+// =====================
+// BUILD SQL CONDITIONS
+// =====================
+
+foreach ($keywords as $word) {
+
+    $word = trim($word);
+
+    if ($word === "") {
+        continue;
+    }
+
+    $index = count($params) + 1;
+
+    $conditions[] = "
+    (
+        symptom_name ILIKE $$index
+        OR symptom_keywords ILIKE $$index
+    )
+    ";
+
+    $params[] = "%{$word}%";
+}
+
+if (empty($conditions)) {
+
+    echo json_encode([
+        "success" => false,
+        "message" => "No valid symptom"
     ]);
 
     exit;
@@ -53,18 +96,16 @@ SELECT
     ai_note
 FROM symptom_assessment
 WHERE
-    symptom_name ILIKE $1
-    OR symptom_keywords ILIKE $1
-ORDER BY severity_score DESC
+    " . implode(" OR ", $conditions) . "
+ORDER BY
+    severity_score DESC
 LIMIT 1
 ";
 
 $result = pg_query_params(
     $conn,
     $sql,
-    [
-        "%$symptom%"
-    ]
+    $params
 );
 
 // =====================
@@ -77,12 +118,9 @@ if (
 ) {
 
     echo json_encode([
-
         "success" => false,
-
-        "message" =>
-            "No assessment data found"
-    ]);
+        "message" => "No assessment data found"
+    ], JSON_UNESCAPED_UNICODE);
 
     exit;
 }
@@ -91,10 +129,7 @@ if (
 // FETCH DATA
 // =====================
 
-$row =
-    pg_fetch_assoc(
-        $result
-    );
+$row = pg_fetch_assoc($result);
 
 // =====================
 // RESPONSE
@@ -117,11 +152,21 @@ echo json_encode([
         $row["department"],
 
     "ems_required" =>
-        $row["ems_required"],
+        (
+            $row["ems_required"] === true ||
+            $row["ems_required"] === "t" ||
+            $row["ems_required"] === "true" ||
+            $row["ems_required"] == 1
+        ),
 
     "severity_score" =>
         (int)$row["severity_score"],
 
     "ai_note" =>
         $row["ai_note"]
-]);
+
+], JSON_UNESCAPED_UNICODE);
+
+exit;
+
+?>
