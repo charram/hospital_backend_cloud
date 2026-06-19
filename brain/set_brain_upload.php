@@ -166,73 +166,99 @@ if (
     exit;
 }
 
-// -------------------
-// CREATE FOLDER
-// -------------------
 
-$uploadDir =
-__DIR__
-. "/../uploads/"
-. $safeCategory
-. "/";
-
-if (
-    !is_dir(
-        $uploadDir
-    )
-) {
-
-    mkdir(
-        $uploadDir,
-        0777,
-        true
-    );
-}
 
 // -------------------
-// GENERATE FILE NAME
+// SUPABASE STORAGE
 // -------------------
 
-$fileName =
-time()
-. "_"
-. uniqid()
-. "."
-. $ext;
+$supabaseUrl = getenv("SUPABASE_URL");
+$supabaseKey = getenv("SUPABASE_SECRET");
 
-$targetPath =
-$uploadDir
-. $fileName;
-
-// -------------------
-// MOVE FILE
-// -------------------
-
-if (
-    !move_uploaded_file(
-        $_FILES["image"]["tmp_name"],
-        $targetPath
-    )
-) {
+if (empty($supabaseUrl) || empty($supabaseKey)) {
 
     echo json_encode([
         "success" => false,
-        "message" =>
-            "Upload image failed"
+        "message" => "Supabase config missing"
     ]);
 
     exit;
 }
 
-// -------------------
-// IMAGE PATH
-// -------------------
+$fileName =
+    time()
+    . "_"
+    . uniqid()
+    . "."
+    . $ext;
+
+$fileData =
+    file_get_contents(
+        $_FILES["image"]["tmp_name"]
+    );
+
+$bucket =
+    "hospital-images";
+
+$uploadUrl =
+    $supabaseUrl
+    . "/storage/v1/object/"
+    . $bucket
+    . "/brain/"
+    . $fileName;
+
+$ch =
+    curl_init(
+        $uploadUrl
+    );
+
+curl_setopt_array(
+    $ch,
+    [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_POSTFIELDS => $fileData,
+        CURLOPT_HTTPHEADER => [
+            "apikey: " . $supabaseKey,
+            "Authorization: Bearer " . $supabaseKey,
+            "Content-Type: image/" . $ext,
+            "x-upsert: true"
+        ]
+    ]
+);
+
+$response =
+    curl_exec($ch);
+
+$httpCode =
+    curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
+
+curl_close($ch);
+
+if (
+    $httpCode < 200 ||
+    $httpCode >= 300
+) {
+
+    echo json_encode([
+        "success" => false,
+        "message" => "supabase upload failed",
+        "response" => $response,
+        "http_code" => $httpCode
+    ]);
+
+    exit;
+}
 
 $imagePath =
-"uploads/"
-. $safeCategory
-. "/"
-. $fileName;
+    $supabaseUrl
+    . "/storage/v1/object/public/"
+    . $bucket
+    . "/brain/"
+    . $fileName;
 
 // -------------------
 // HERO AUTO RESET
