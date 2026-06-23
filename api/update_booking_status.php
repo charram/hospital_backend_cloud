@@ -2,25 +2,18 @@
 header("Content-Type: application/json");
 require_once __DIR__ . '/db_connect.php';
 
-// ✅ รับค่า
 $id_raw = $_POST['id'] ?? null;
 $status = $_POST['status'] ?? '';
 
-$id = is_numeric($id_raw)
-    ? (int)$id_raw
-    : 0;
+$id = is_numeric($id_raw) ? (int)$id_raw : 0;
 
-// 🔥 รับข้อมูลใบนำทาง
 $department = $_POST['department'] ?? null;
-$building = $_POST['building'] ?? null;
-$floor = $_POST['floor'] ?? null;
-$room = $_POST['room'] ?? null;
-$queue_no = $_POST['queue_no'] ?? null;
+$building   = $_POST['building'] ?? null;
+$floor      = $_POST['floor'] ?? null;
+$room       = $_POST['room'] ?? null;
+$queue_no   = $_POST['queue_no'] ?? null;
 
-error_log("BOOKING ID = " . $id);
-error_log("STATUS = " . $status);
-
-if ($id <= 0 || !$status) {
+if ($id <= 0 || empty($status)) {
     echo json_encode([
         "success" => false,
         "message" => "invalid id or status"
@@ -28,7 +21,6 @@ if ($id <= 0 || !$status) {
     exit;
 }
 
-// 🔥 update booking + navigation
 $res = pg_query_params(
     $conn,
     "UPDATE bookings
@@ -51,22 +43,49 @@ $res = pg_query_params(
     ]
 );
 
-// 🔥 ดึง user_id
+if (!$res) {
+    echo json_encode([
+        "success" => false,
+        "message" => pg_last_error($conn)
+    ]);
+    exit;
+}
+
 $q = pg_query_params(
     $conn,
-    "SELECT user_id
-     FROM bookings
-     WHERE id=$1",
+    "SELECT user_id FROM bookings WHERE id=$1",
     [$id]
 );
 
 $row = pg_fetch_assoc($q);
 $user_id = $row['user_id'] ?? null;
 
-// 🔥 insert notification
 if ($user_id) {
 
-    $insert = pg_query_params(
+    $title = "สถานะการนัดหมาย";
+    $body  = "";
+
+    if ($status === "approved") {
+
+        $body = "การจองของคุณได้รับการอนุมัติแล้ว";
+
+    } elseif ($status === "rejected") {
+
+        $body = "การจองของคุณถูกปฏิเสธ";
+
+    } elseif ($status === "arrived") {
+
+        $title = "ใบนำทางผู้ป่วย";
+
+        $body =
+            "แผนก: {$department}\n" .
+            "อาคาร: {$building}\n" .
+            "ชั้น: {$floor}\n" .
+            "ห้อง: {$room}\n" .
+            "คิว: {$queue_no}";
+    }
+
+    pg_query_params(
         $conn,
         "INSERT INTO notifications
         (
@@ -79,23 +98,14 @@ if ($user_id) {
         ($1,$2,$3,$4)",
         [
             $user_id,
-            "สถานะการนัดหมาย",
-            $status == "approved"
-                ? "การจองของคุณได้รับการอนุมัติแล้ว"
-                : "การจองของคุณถูกปฏิเสธ",
+            $title,
+            $body,
             $id
         ]
     );
-
-    if (!$insert) {
-        error_log(
-            "INSERT ERROR: "
-            . pg_last_error($conn)
-        );
-    }
 }
 
 echo json_encode([
-    "success" => $res ? true : false,
+    "success" => true,
     "booking_id" => $id
 ]);
