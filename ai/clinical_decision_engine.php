@@ -4,16 +4,23 @@ require_once __DIR__ . "/MedicalKnowledge.php";
 require_once __DIR__ . "/DiseaseEngine.php";
 require_once __DIR__ . "/RiskAssessmentEngine.php";
 require_once __DIR__ . "/PatientContext.php";
+require_once __DIR__ . "/hospital_recommendation_engine.php";
+require_once __DIR__ . "/explainable_ai_engine.php";
 
 class ClinicalDecisionEngine
 {
     private DiseaseEngine $diseaseEngine;
     private RiskAssessmentEngine $riskEngine;
+    private HospitalRecommendationEngine $hospitalEngine;
+    private ExplainableAIEngine $explainEngine;
 
     public function __construct()
     {
         $this->diseaseEngine = new DiseaseEngine();
         $this->riskEngine = new RiskAssessmentEngine();
+        $this->hospitalEngine = new HospitalRecommendationEngine();
+        $this->explainEngine = new ExplainableAIEngine();
+        
     }
 
     public function evaluate(
@@ -32,19 +39,18 @@ class ClinicalDecisionEngine
         // Patient Risk
         // ==========================
         $risk = $this->riskEngine->assess($patient);
+if ($disease === null) {
 
-        if ($disease === null) {
+    return [
+        "success" => false,
+        "message" => "ไม่สามารถระบุโรคได้",
+        "risk_level" => $risk["risk_level"],
+        "risk_score" => $risk["risk_score"],
+        "risk_reasons" => $risk["reasons"],
+        "patient" => $patient->toArray()
+    ];
 
-            return [
-                "success" => false,
-                "message" => "ไม่สามารถระบุโรคได้",
-                "risk_level" => $risk["risk_level"],
-                "risk_score" => $risk["risk_score"],
-                "risk_reasons" => $risk["reasons"],
-                "patient" => $patient->toArray()
-            ];
-
-        }
+}
 
         // ==========================
         // Combine Disease + Risk
@@ -74,33 +80,47 @@ class ClinicalDecisionEngine
         }
 
         $aiNote = "วิเคราะห์โดย Clinical Decision Engine";
-                return [
+        $hospital = $this->hospitalEngine->recommend(
+    $disease["department"],
+    $emsRequired
+    
+);
+    $result = [
 
-            "success" => true,
+    "success" => true,
 
-            "symptom_name" => $disease["name"],
+    "symptom_name" => $disease["name"],
 
-            "department" => $disease["department"],
+    "department" => $disease["department"],
 
-            "urgency_level" => $urgency,
+    "urgency_level" => $urgency,
 
-            "severity_score" => $severity,
+    "severity_score" => $severity,
 
-            "ems_required" => $emsRequired,
+    "ems_required" => $emsRequired,
 
-            "recommendation" => $disease["recommendation"],
+    "recommendation" => $disease["recommendation"],
 
-            "risk_level" => $risk["risk_level"],
+    "hospital_type" => $hospital["hospital_type"],
 
-            "risk_score" => $risk["risk_score"],
+    "hospital_priority" => $hospital["priority"],
 
-            "risk_reasons" => $risk["reasons"],
+    "hospital_recommendation" => $hospital["recommendation"],
 
-            "patient" => $patient->toArray(),
+    "risk_level" => $risk["risk_level"],
 
-            "ai_note" => $aiNote
+    "risk_score" => $risk["risk_score"],
 
-        ];
+    "risk_reasons" => $risk["reasons"],
+
+    "patient" => $patient->toArray(),
+
+    "ai_note" => $aiNote
+
+];$result["explanation"] = $this->explainEngine->explain($result);
+
+return $result;
+
 
     }
 
