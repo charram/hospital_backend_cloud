@@ -1,6 +1,4 @@
 <?php
-echo "CHECK_SYMPTOM_NEW_VERSION";
-exit;
 
 header("Content-Type: application/json; charset=UTF-8");
 
