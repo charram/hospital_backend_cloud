@@ -9,7 +9,10 @@ class RiskAssessmentEngine
         $score = 0;
         $reasons = [];
 
-        // อายุ
+        // ==========================
+        // Age
+        // ==========================
+
         if ($patient->isElderly()) {
             $score += 2;
             $reasons[] = "ผู้ป่วยอายุ 60 ปีขึ้นไป";
@@ -20,82 +23,176 @@ class RiskAssessmentEngine
             $reasons[] = "ผู้ป่วยเป็นเด็ก";
         }
 
-        // ค่าออกซิเจน
+        // ==========================
+        // Vital Signs
+        // ==========================
+
         if ($patient->hasLowSpo2()) {
             $score += 4;
-            $reasons[] = "ค่าออกซิเจนในเลือดต่ำ";
+            $reasons[] = "ค่าออกซิเจนในเลือดต่ำ (SpO₂ < 94%)";
         }
 
-        // ไข้สูง
         if ($patient->hasHighFever()) {
             $score += 2;
             $reasons[] = "มีไข้สูง";
         }
 
-        // หัวใจเต้นเร็ว
         if ($patient->hasTachycardia()) {
             $score += 2;
             $reasons[] = "หัวใจเต้นเร็วผิดปกติ";
         }
 
-        // โรคประจำตัว
-        if ($patient->hasDisease("เบาหวาน")) {
+        // ==========================
+        // Chronic Diseases
+        // ==========================
+
+        if ($patient->hasDisease("diabetes")) {
             $score += 2;
             $reasons[] = "มีโรคเบาหวาน";
         }
 
-        if ($patient->hasDisease("ความดันโลหิตสูง")) {
+        if ($patient->hasDisease("hypertension")) {
             $score += 2;
             $reasons[] = "มีโรคความดันโลหิตสูง";
         }
 
-        if ($patient->hasDisease("โรคหัวใจ")) {
+        if ($patient->hasDisease("heart_disease")) {
             $score += 3;
             $reasons[] = "มีโรคหัวใจ";
         }
 
-        if ($patient->hasDisease("โรคปอด")) {
+        if ($patient->hasDisease("lung_disease")) {
             $score += 3;
             $reasons[] = "มีโรคปอด";
         }
 
-        if ($patient->hasDisease("โรคไต")) {
+        if ($patient->hasDisease("ckd")) {
             $score += 2;
-            $reasons[] = "มีโรคไต";
+            $reasons[] = "มีโรคไตเรื้อรัง";
         }
 
-        // การตั้งครรภ์
+        if ($patient->hasDisease("copd")) {
+            $score += 3;
+            $reasons[] = "มีโรคปอดอุดกั้นเรื้อรัง";
+        }
+
+        if ($patient->hasDisease("asthma")) {
+            $score += 2;
+            $reasons[] = "มีโรคหอบหืด";
+        }
+
+        if ($patient->hasDisease("cancer")) {
+            $score += 3;
+            $reasons[] = "มีโรคมะเร็ง";
+        }
+
+        if ($patient->hasDisease("stroke")) {
+            $score += 3;
+            $reasons[] = "มีประวัติโรคหลอดเลือดสมอง";
+        }
+
+        // ==========================
+        // Pregnancy
+        // ==========================
+
         if ($patient->pregnant) {
             $score += 2;
             $reasons[] = "กำลังตั้งครรภ์";
         }
 
-        // สูบบุหรี่
+        // ==========================
+        // Lifestyle
+        // ==========================
+
         if ($patient->smoker) {
             $score += 1;
             $reasons[] = "สูบบุหรี่";
         }
 
-        // ดื่มสุรา
         if ($patient->drinker) {
             $score += 1;
             $reasons[] = "ดื่มแอลกอฮอล์";
         }
 
+        // ==========================
         // BMI
+        // ==========================
+
         $bmi = $patient->getBMI();
 
         if ($bmi >= 30) {
             $score += 2;
             $reasons[] = "ภาวะอ้วน";
-        }
-
-        if ($bmi > 0 && $bmi < 18.5) {
+        } elseif ($bmi >= 25) {
+            $score += 1;
+            $reasons[] = "น้ำหนักเกิน";
+        } elseif ($bmi > 0 && $bmi < 18.5) {
             $score += 1;
             $reasons[] = "น้ำหนักต่ำกว่าเกณฑ์";
         }
 
-        // ระดับความเสี่ยง
+        // ==========================
+        // Blood Pressure
+        // ==========================
+
+        if (!empty($patient->bloodPressure)) {
+
+            $bp = explode("/", $patient->bloodPressure);
+
+            if (count($bp) == 2) {
+
+                $sys = intval($bp[0]);
+                $dia = intval($bp[1]);
+
+                if ($sys >= 180 || $dia >= 120) {
+                    $score += 4;
+                    $reasons[] = "ความดันโลหิตสูงวิกฤต";
+                } elseif ($sys >= 140 || $dia >= 90) {
+                    $score += 2;
+                    $reasons[] = "ความดันโลหิตสูง";
+                }
+            }
+        }
+
+        // ==========================
+        // Temperature
+        // ==========================
+
+        if ($patient->temperature >= 40) {
+            $score += 3;
+            $reasons[] = "ไข้สูงมาก";
+        }
+
+        // ==========================
+        // Oxygen
+        // ==========================
+
+        if ($patient->spo2 > 0 && $patient->spo2 < 90) {
+            $score += 4;
+            $reasons[] = "ออกซิเจนต่ำรุนแรง";
+        }
+
+        // ==========================
+        // Heart Rate
+        // ==========================
+
+        if ($patient->heartRate >= 140) {
+            $score += 3;
+            $reasons[] = "หัวใจเต้นเร็วมาก";
+        }
+
+        // ==========================
+        // Normalize
+        // ==========================
+
+        if ($score > 10) {
+            $score = 10;
+        }
+
+        // ==========================
+        // Risk Level
+        // ==========================
+
         if ($score >= 10) {
             $level = "สูงมาก";
         } elseif ($score >= 7) {
@@ -107,9 +204,13 @@ class RiskAssessmentEngine
         }
 
         return [
+
             "risk_score" => $score,
+
             "risk_level" => $level,
+
             "reasons" => $reasons
+
         ];
     }
 }
