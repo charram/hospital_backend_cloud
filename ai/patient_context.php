@@ -61,11 +61,14 @@ class PatientContext
         return $this->age >= 60;
     }
 
-    public function isChild(): bool
-    {
-        return $this->age <= 12;
+ public function isChild(): bool
+{
+    if ($this->age <= 0) {
+        return false;
     }
 
+    return $this->age <= 12;
+}
     public function hasLowSpo2(): bool
     {
         return $this->spo2 > 0 && $this->spo2 < 94;
