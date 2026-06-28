@@ -1,13 +1,13 @@
 <?php
 
-require_once __DIR__ . "/DiseaseEngine.php";
-require_once __DIR__ . "/RiskAssessmentEngine.php";
-require_once __DIR__ . "/PatientContext.php";
-require_once __DIR__ . "/ClinicalDecisionEngine.php";
-require_once __DIR__ . "/LearningEngine.php";
-require_once __DIR__ . "/CaseMemoryEngine.php";
-require_once __DIR__ . "/ExplainableAIEngine.php";
-require_once __DIR__ . "/HospitalRecommendationEngine.php";
+require_once __DIR__ . "/clinical_decision_engine.php";
+require_once __DIR__ . "/learning_engine.php";
+require_once __DIR__ . "/case_memory_engine.php";
+require_once __DIR__ . "/patient_context.php";
+require_once __DIR__ . "/disease_engine.php";
+require_once __DIR__ . "/risk_assessment_engine.php";
+require_once __DIR__ . "/hospital_recommendation_engine.php";
+require_once __DIR__ . "/explainable_ai_engine.php";
 
 class MedicalReasoningEngine
 {

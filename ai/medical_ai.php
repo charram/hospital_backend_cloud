@@ -1,8 +1,7 @@
 <?php
 
-require_once __DIR__ . "/ReasoningEngine.php";
-require_once __DIR__ . "/PatientContext.php";
-
+require_once __DIR__ . "/reasoning_engine.php";
+require_once __DIR__ . "/patient_context.php";
 class MedicalAI
 {
     private ReasoningEngine $reasoningEngine;

@@ -1,8 +1,8 @@
 <?php
-require_once __DIR__ . "/MedicalKnowledge.php";
-require_once __DIR__ . "/DiseaseEngine.php";
-require_once __DIR__ . "/PatientContext.php";
-require_once __DIR__ . "/RiskAssessmentEngine.php";
+require_once __DIR__ . "/medical_knowledge.php";
+require_once __DIR__ . "/disease_engine.php";
+require_once __DIR__ . "/patient_context.php";
+require_once __DIR__ . "/risk_assessment_engine.php";
 
 
 class ReasoningEngine
