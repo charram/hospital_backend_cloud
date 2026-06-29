@@ -2456,38 +2456,202 @@ class DiseaseEngine
         // ==========================
             ];
 
-    public function findDisease(string $text): ?array
-    {
-        $text = mb_strtolower(trim($text), "UTF-8");
+   public function findDiseases(
+    string $text,
+    array $answers = []
+): array
+{
+    $text = mb_strtolower(trim($text), "UTF-8");
 
-        $bestDisease = null;
-        $bestScore = 0;
+    $results = [];
 
-        foreach ($this->diseases as $disease) {
+    foreach ($this->diseases as $disease) {
 
-            $score = 0;
+        $score = 0;
 
-            foreach ($disease["keywords"] as $keyword) {
-                if (mb_strpos($text, mb_strtolower($keyword, "UTF-8")) !== false) {
-                    $score++;
+        // ==========================
+        // Keyword Score
+        // ==========================
+        foreach ($disease["keywords"] as $keyword) {
+
+            if (mb_strpos(
+                $text,
+                mb_strtolower($keyword, "UTF-8")
+            ) !== false) {
+
+                $score += 10;
+
+            }
+
+        }
+
+        // ==========================
+        // Red Flag Score
+        // ==========================
+        if (!empty($disease["red_flags"])) {
+
+            foreach ($disease["red_flags"] as $flag) {
+
+                if (mb_strpos(
+                    $text,
+                    mb_strtolower($flag, "UTF-8")
+                ) !== false) {
+
+                    $score += 20;
+
                 }
+
             }
 
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $bestDisease = $disease;
-            }
         }
 
-        if ($bestScore === 0) {
-            return null;
+        // ==========================
+        // Severity Bonus
+        // ==========================
+        $score += (($disease["severity"] ?? 0) * 2);
+
+        // ==========================
+        // Clinical Question Score
+        // ==========================
+        $score += $this->scoreByClinicalAnswers(
+            $disease,
+            $answers
+        );
+
+        if ($score <= 0) {
+            continue;
         }
 
-        return $bestDisease;
+        $disease["confidence"] = min(100, $score);
+
+        $results[] = $disease;
     }
 
-    public function getAllDiseases(): array
-    {
-        return $this->diseases;
+    usort($results, function ($a, $b) {
+
+        return $b["confidence"] <=> $a["confidence"];
+
+    });
+
+    return array_slice($results, 0, 10);
+}
+
+
+private function scoreByClinicalAnswers(
+    array $disease,
+    array $answers
+): int
+{
+    $score = 0;
+
+    switch ($disease["icd_group"]) {
+
+        // ==========================
+        // Migraine
+        // ==========================
+        case "neurology_migraine":
+
+            if (($answers["head_one_side"] ?? "") === "ใช่")
+                $score += 20;
+
+            if (($answers["head_photophobia"] ?? "") === "มี")
+                $score += 20;
+
+            break;
+
+        // ==========================
+        // Stroke
+        // ==========================
+        case "neurology_stroke":
+
+            if (($answers["head_weakness"] ?? "") === "มี")
+                $score += 35;
+
+            if (($answers["head_slurred_speech"] ?? "") === "มี")
+                $score += 35;
+
+            if (($answers["head_neuro"] ?? "") === "มี")
+                $score += 40;
+
+            break;
+
+        // ==========================
+        // Appendicitis
+        // ==========================
+        case "gi_appendicitis":
+
+            if (($answers["abd_location"] ?? "") === "ท้องน้อยขวา")
+                $score += 30;
+
+            if (($answers["abd_rebound"] ?? "") === "ใช่")
+                $score += 25;
+
+            if (($answers["abd_fever"] ?? "") === "มี")
+                $score += 15;
+
+            if (($answers["abd_vomiting"] ?? "") === "มี")
+                $score += 10;
+
+            break;
+
+        // ==========================
+        // Acute Coronary Syndrome
+        // ==========================
+        case "cardiology_acs":
+
+            if (($answers["chest_radiation"] ?? "") !== "ไม่ร้าว")
+                $score += 30;
+
+            if (($answers["chest_sweating"] ?? "") === "มี")
+                $score += 20;
+
+            if (($answers["chest_duration"] ?? "") === "มากกว่า20นาที")
+                $score += 25;
+
+            break;
+
+        // ==========================
+        // Asthma
+        // ==========================
+        case "respiratory_asthma":
+
+            if (($answers["dyspnea_wheezing"] ?? "") === "มี")
+                $score += 25;
+
+            if (($answers["dyspnea_blue"] ?? "") === "มี")
+                $score += 40;
+
+            if (($answers["spo2"] ?? 100) < 92)
+                $score += 30;
+
+            break;
+
+        // ==========================
+        // COPD
+        // ==========================
+        case "respiratory_copd":
+
+            if (($answers["dyspnea_wheezing"] ?? "") === "มี")
+                $score += 15;
+
+            if (($answers["spo2"] ?? 100) < 90)
+                $score += 35;
+
+            break;
     }
+
+    return $score;
+}
+
+public function findDisease(string $text): ?array
+{
+    $list = $this->findDiseases($text);
+
+    return $list[0] ?? null;
+}
+
+public function getAllDiseases(): array
+{
+    return $this->diseases;
+}
 }

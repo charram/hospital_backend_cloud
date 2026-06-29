@@ -22,20 +22,21 @@ class MedicalReasoningEngine
         $this->caseMemory = new CaseMemoryEngine();
     }
 
-    public function analyze(
-        string $symptom,
-        PatientContext $patient
-    ): array
+public function analyze(
+    string $symptom,
+    PatientContext $patient,
+    array $answers = []
+): array
     {
 
         // ===============================
         // Clinical Decision
         // ===============================
-        $result = $this->clinicalEngine->evaluate(
-            $symptom,
-            $patient
-        );
-
+      $result = $this->clinicalEngine->evaluate(
+    $symptom,
+    $patient,
+    $answers
+);
         // ===============================
         // Save Case Memory
         // ===============================
@@ -44,6 +45,7 @@ class MedicalReasoningEngine
             $case = [
 
                 "symptom" => $symptom,
+                "question_answers" => $answers,
 
                 "disease" => $result["symptom_name"],
 
@@ -87,6 +89,7 @@ class MedicalReasoningEngine
 
         $result["memory_cases"] =
             $this->caseMemory->count();
+            $result["question_answers"] = $answers;
 
         return $result;
     }

@@ -6,6 +6,7 @@ require_once __DIR__ . "/risk_assessment_engine.php";
 require_once __DIR__ . "/patient_context.php";
 require_once __DIR__ . "/hospital_recommendation_engine.php";
 require_once __DIR__ . "/explainable_ai_engine.php";
+
 class ClinicalDecisionEngine
 {
     private DiseaseEngine $diseaseEngine;
@@ -19,42 +20,50 @@ class ClinicalDecisionEngine
         $this->riskEngine = new RiskAssessmentEngine();
         $this->hospitalEngine = new HospitalRecommendationEngine();
         $this->explainEngine = new ExplainableAIEngine();
-        
     }
 
     public function evaluate(
         string $symptom,
-        PatientContext $patient
-    ): array
-    {
+        PatientContext $patient,
+        array $answers = []
+    ): array {
         $symptom = mb_strtolower(trim($symptom), "UTF-8");
 
         // ==========================
-        // Disease Prediction
+        // Disease Ranking + Re-ranking
         // ==========================
-        $disease = $this->diseaseEngine->findDisease($symptom);
+        $diseases = $this->diseaseEngine->findDiseases($symptom, $answers);
 
         // ==========================
         // Patient Risk
         // ==========================
         $risk = $this->riskEngine->assess($patient);
-if ($disease === null) {
 
-    return [
-        "success" => false,
-        "message" => "ไม่สามารถระบุโรคได้",
-        "risk_level" => $risk["risk_level"],
-        "risk_score" => $risk["risk_score"],
-        "risk_reasons" => $risk["reasons"],
-        "patient" => $patient->toArray()
-    ];
+        if (count($diseases) === 0) {
+            return [
+                "success" => false,
+                "message" => "ไม่สามารถระบุโรคได้",
+                "possible_diseases" => [],
+                "clinical_questions" => $answers,
+                "risk_level" => $risk["risk_level"],
+                "risk_score" => $risk["risk_score"],
+                "risk_reasons" => $risk["reasons"],
+                "patient" => $patient->toArray()
+            ];
+        }
 
-}
+        // เอาโรคที่คะแนนสูงสุด
+        $disease = $diseases[0];
+
+        // กัน key severity หาย
+        if (!isset($disease["severity"])) {
+            $disease["severity"] = $disease["severity_score"] ?? 0;
+        }
 
         // ==========================
-        // Combine Disease + Risk
+        // Combine Disease + Patient Risk
         // ==========================
-        $severity = $disease["severity"] + $risk["risk_score"];
+        $severity = (int)$disease["severity"] + (int)$risk["risk_score"];
 
         if ($severity > 10) {
             $severity = 10;
@@ -68,59 +77,55 @@ if ($disease === null) {
             $urgency = "ปานกลาง";
         }
 
-        $emsRequired = $disease["ems"];
+        $emsRequired = $disease["ems"] ?? false;
 
         if ($risk["risk_level"] === "สูงมาก") {
-
             $severity = 10;
             $urgency = "สูง";
             $emsRequired = true;
-
         }
 
-        $aiNote = "วิเคราะห์โดย Clinical Decision Engine";
+        $department = $disease["department"] ?? "อายุรกรรม";
+
         $hospital = $this->hospitalEngine->recommend(
-    $disease["department"],
-    $emsRequired
-    
-);
-    $result = [
+            $department,
+            $emsRequired
+        );
 
-    "success" => true,
+        $result = [
+            "success" => true,
 
-    "symptom_name" => $disease["name"],
+            "symptom_name" => $disease["name"],
 
-    "department" => $disease["department"],
+            "possible_diseases" => $diseases,
 
-    "urgency_level" => $urgency,
+            "department" => $department,
 
-    "severity_score" => $severity,
+            "urgency_level" => $urgency,
 
-    "ems_required" => $emsRequired,
+            "severity_score" => $severity,
 
-    "recommendation" => $disease["recommendation"],
+            "ems_required" => $emsRequired,
 
-    "hospital_type" => $hospital["hospital_type"],
+            "recommendation" => $disease["recommendation"] ?? "ควรพบแพทย์เพื่อประเมินเพิ่มเติม",
 
-    "hospital_priority" => $hospital["priority"],
+            "hospital_type" => $hospital["hospital_type"],
+            "hospital_priority" => $hospital["priority"],
+            "hospital_recommendation" => $hospital["recommendation"],
 
-    "hospital_recommendation" => $hospital["recommendation"],
+            "risk_level" => $risk["risk_level"],
+            "risk_score" => $risk["risk_score"],
+            "risk_reasons" => $risk["reasons"],
 
-    "risk_level" => $risk["risk_level"],
+            "patient" => $patient->toArray(),
 
-    "risk_score" => $risk["risk_score"],
+            "clinical_questions" => $answers,
 
-    "risk_reasons" => $risk["reasons"],
+            "ai_note" => "วิเคราะห์โดย Clinical Decision Engine"
+        ];
 
-    "patient" => $patient->toArray(),
+        $result["explanation"] = $this->explainEngine->explain($result);
 
-    "ai_note" => $aiNote
-
-];$result["explanation"] = $this->explainEngine->explain($result);
-
-return $result;
-
-
+        return $result;
     }
-
 }
