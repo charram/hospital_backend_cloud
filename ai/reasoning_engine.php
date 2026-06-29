@@ -1,261 +1,1192 @@
 <?php
-require_once __DIR__ . "/medical_knowledge.php";
-require_once __DIR__ . "/disease_engine.php";
-require_once __DIR__ . "/patient_context.php";
-require_once __DIR__ . "/risk_assessment_engine.php";
 
+declare(strict_types=1);
+
+require_once __DIR__ . "/medical_knowledge.php";
+require_once __DIR__ . "/symptom_extraction_engine.php";
+require_once __DIR__ . "/patient_context.php";
+
+/**
+ * ============================================================
+ * Open Hospital Medical AI V2
+ * Reasoning Engine
+ * ------------------------------------------------------------
+ * หน้าที่
+ * - วิเคราะห์อาการ
+ * - โหลด Medical Knowledge
+ * - สร้าง Candidate Disease
+ * - ส่งต่อ Differential Engine
+ * - ไม่คำนวณ EMS
+ * - ไม่คำนวณ Severity
+ * - ไม่คำนวณ Hospital
+ * ============================================================
+ */
 
 class ReasoningEngine
 {
-    private string $text = "";
 
-   public function analyze(
-    string $symptom,
-    ?PatientContext $patient = null
-): array
+    /**
+     * NLP Engine
+     */
+    private SymptomExtractionEngine $extractor;
+
+    /**
+     * Medical Knowledge
+     */
+    private array $knowledge = [];
+
+    /**
+     * Candidate Diseases
+     */
+    private array $candidates = [];
+
+    /**
+     * Extraction Result
+     */
+    private array $extraction = [];
+
+    /**
+     * Patient Context
+     */
+    private ?PatientContext $patient = null;
+
+    /**
+     * Rule Weight
+     */
+    private const SYMPTOM_SCORE = 10;
+    private const RED_FLAG_SCORE = 20;
+    private const RISK_SCORE = 5;
+
+    /**
+     * Constructor
+     */
+    public function __construct(
+        ?SymptomExtractionEngine $extractor = null
+    )
     {
-        $this->text = mb_strtolower(trim($symptom), "UTF-8");
-        $diseaseEngine = new DiseaseEngine();
-        $riskEngine = new RiskAssessmentEngine();
 
-if ($patient === null) {
-    $patient = new PatientContext();
-}
+        $this->extractor =
+            $extractor ??
+            new SymptomExtractionEngine();
 
-$risk = $riskEngine->assess($patient);
+        $this->knowledge =
+            MedicalKnowledge::getDiseases();
 
-$disease = $diseaseEngine->findDisease($this->text);
-
-        $score = 0;
-        $department = "อายุรกรรม";
-        $urgency = "ต่ำ";
-        $emsRequired = false;
-        $possibleDisease = "อาการทั่วไป";
-        $recommendation = "แนะนำให้สังเกตอาการ หากอาการไม่ดีขึ้นหรือรุนแรงขึ้น ควรพบแพทย์";
-        $note = "ระบบประเมินจากกลุ่มอาการที่ผู้ใช้ระบุ ใช้เพื่อคัดกรองเบื้องต้น ไม่ใช่การวินิจฉัยโรค";
-if ($disease !== null) {
-
-    $possibleDisease = $disease["name"];
-    $department = $disease["department"];
-
-    // คะแนนจาก Disease Engine
-    $score = $disease["severity"];
-
-    // เพิ่มคะแนนจากความเสี่ยงของผู้ป่วย
-    $score += $risk["risk_score"];
-
-    if ($score > 10) {
-        $score = 10;
     }
 
-    $emsRequired = $disease["ems"];
-    $recommendation = $disease["recommendation"];
+    /**
+     * ======================================================
+     * Main Entry
+     * ======================================================
+     */
 
-    if ($score >= 8) {
-        $urgency = "สูง";
-    } elseif ($score >= 5) {
-        $urgency = "ปานกลาง";
-    } else {
-        $urgency = "ต่ำ";
-    }
+    public function analyze(
+
+        string $text,
+
+        ?PatientContext $patient = null
+
+    ): array
+    {
+
+        if ($patient === null) {
+
+            $patient = new PatientContext();
+
+        }
+
+        $this->patient = $patient;
+
+        /**
+         * STEP 1
+         * NLP
+         */
+
+        $this->extraction =
+            $this->extractor
+                ->extract($text);
+                if (empty($this->extraction["symptoms"])) {
 
     return [
-        "success" => true,
-        "symptom_name" => $possibleDisease,
-        "urgency_level" => $urgency,
-        "recommendation" => $recommendation,
-        "department" => $department,
-        "ems_required" => $emsRequired,
-        "severity_score" => $score,
-        "risk_level" => $risk["risk_level"],
-        "risk_score" => $risk["risk_score"],
-        "risk_reasons" => $risk["reasons"],
-        "ai_note" => "วิเคราะห์โดย Disease Engine + Risk Assessment Engine"
+
+        "success" => false,
+
+        "message" => "ไม่พบอาการที่สามารถวิเคราะห์ได้",
+
+        "engine" => "Reasoning Engine V2"
+
     ];
+
 }
-       
 
-        $heartWords = MedicalKnowledge::heartWords();
+        /**
+         * STEP 2
+         * Candidate Disease
+         */
 
-$brainWords = MedicalKnowledge::brainWords();
+        $this->candidates =
+            [];
 
-$respiratoryWords = MedicalKnowledge::respiratoryWords();
+        foreach (
 
-$feverWords = MedicalKnowledge::feverWords();
+            $this->knowledge
 
-$stomachWords = MedicalKnowledge::stomachWords();
+            as
 
-$traumaWords = MedicalKnowledge::traumaWords();
+            $disease
 
-$allergyWords = MedicalKnowledge::allergyWords();
+        ) {
 
-$mentalWords = MedicalKnowledge::mentalWords();
+            $candidate =
+                $this->buildCandidate(
+                    $disease
+                );
 
-$emergencyWords = MedicalKnowledge::emergencyWords();
+            if (
 
-      
+                $candidate["match_score"] > 0
 
-        $score += $this->countMatchedWords($emergencyWords) * 4;
+            ) {
 
-        if ($this->hasAny($heartWords)) {
+                $this->candidates[] =
+                    $candidate;
 
-            $score += $this->countMatchedWords($heartWords) * 3;
+            }
 
-            $department = "หัวใจ";
-
-            $possibleDisease = "กลุ่มอาการหัวใจหรือระบบไหลเวียนเลือด";
-
-            $note = "พบกลุ่มอาการที่อาจเกี่ยวข้องกับหัวใจ เช่น แน่นหน้าอก เหนื่อยง่าย หรือหายใจลำบาก";
         }
 
-        if ($this->hasAny($brainWords)) {
+        /**
+         * STEP 3
+         * Ranking
+         */
 
-            $score += $this->countMatchedWords($brainWords) * 4;
+        usort(
 
-            $department = "ระบบประสาท";
+            $this->candidates,
 
-            $possibleDisease = "กลุ่มอาการทางระบบประสาท";
+            function ($a, $b) {
 
-            $note = "พบกลุ่มอาการที่อาจเกี่ยวข้องกับระบบประสาท ควรระวังภาวะฉุกเฉิน เช่น Stroke";
+                return
+
+                    $b["match_score"]
+
+                    <=>
+
+                    $a["match_score"];
+
+            }
+
+        );
+
+        /**
+         * STEP 4
+         * Return
+         */
+
+        return
+
+            $this->buildResult($text);
+
+    }
+        /**
+     * ======================================================
+     * Build Disease Candidate
+     * ======================================================
+     */
+
+    private function buildCandidate(
+        array $disease
+    ): array
+    {
+
+        $matchedSymptoms = [];
+        $matchedRedFlags = [];
+        $matchedRiskFactors = [];
+
+        $score = 0;
+
+        //--------------------------------------------
+        // Match Symptoms
+        //--------------------------------------------
+
+        foreach (
+
+            $disease["symptoms"] ?? []
+
+            as
+
+            $symptom
+
+        ) {
+
+            if (
+
+                in_array(
+
+                    $symptom,
+
+                    $this->extraction["symptoms"] ?? [],
+
+                    true
+
+                )
+
+            ) {
+
+                $matchedSymptoms[] =
+                    $symptom;
+
+                $score +=
+                    self::SYMPTOM_SCORE;
+
+            }
+
         }
 
-        if ($this->hasAny($respiratoryWords)) {
+        //--------------------------------------------
+        // Match Red Flags
+        //--------------------------------------------
 
-            $score += $this->countMatchedWords($respiratoryWords) * 2;
+        foreach (
 
-            $department = "โรคปอด / อายุรกรรม";
+            $disease["red_flags"] ?? []
 
-            $possibleDisease = "กลุ่มอาการทางระบบทางเดินหายใจ";
+            as
 
-            $note = "พบกลุ่มอาการทางระบบหายใจ ควรประเมินระดับการหายใจและอาการเหนื่อย";
+            $flag
+
+        ) {
+
+            if (
+
+                in_array(
+
+                    $flag,
+
+                    $this->extraction["red_flags"] ?? [],
+
+                    true
+
+                )
+
+            ) {
+
+                $matchedRedFlags[] =
+                    $flag;
+
+                $score +=
+                    self::RED_FLAG_SCORE;
+
+            }
+
         }
 
-        if ($this->hasAny($feverWords)) {
+        //--------------------------------------------
+        // Match Risk Factors
+        //--------------------------------------------
 
-            $score += $this->countMatchedWords($feverWords);
+        foreach (
 
-            $department = "อายุรกรรม";
+            $disease["risk_factors"] ?? []
 
-            $possibleDisease = "กลุ่มอาการติดเชื้อหรือไข้";
+            as
 
-            $note = "พบกลุ่มอาการไข้หรือติดเชื้อ ควรติดตามไข้และอาการร่วม";
+            $risk
+
+        ) {
+
+            if (
+
+                $this->hasRiskFactor($risk)
+
+            ) {
+
+                $matchedRiskFactors[] =
+                    $risk;
+
+                $score +=
+                    self::RISK_SCORE;
+
+            }
+
         }
 
-        if ($this->hasAny($stomachWords)) {
+        //--------------------------------------------
+        // Candidate Object
+        //--------------------------------------------
 
-            $score += $this->countMatchedWords($stomachWords) * 2;
+        $candidate = [
 
-            $department = "ทางเดินอาหาร / อายุรกรรม";
+           "disease_id" => $disease["disease_id"] ?? "",
+         "disease_name_th" => $disease["disease_name_th"] ?? "",
+"disease_name_en" => $disease["disease_name_en"] ?? "",
+"category" => $disease["category"] ?? "",
+"department" => $disease["department"] ?? "",
+"severity_base_score" => $disease["severity_base_score"] ?? 0,
+"ems_required" => $disease["ems_required"] ?? false,
+"hospital_capability_required" => $disease["hospital_capability_required"] ?? [],
+"recommendation" => $disease["recommendation"] ?? "",
+"reasoning_note" => $disease["reasoning_note"] ?? "",
 
-            $possibleDisease = "กลุ่มอาการทางเดินอาหาร";
+            //--------------------------------
 
-            $note = "พบกลุ่มอาการทางเดินอาหาร ควรประเมินภาวะขาดน้ำหรืออาการปวดรุนแรง";
+            "matched_symptoms" =>
+
+                $matchedSymptoms,
+
+            "matched_red_flags" =>
+
+                $matchedRedFlags,
+
+            "matched_risk_factors" =>
+
+                $matchedRiskFactors,
+
+            //--------------------------------
+
+            "matched_rules" => [],
+
+            "clinical_evidence" => [],
+
+            "confidence" => 0,
+
+            "match_score" =>
+
+                $score
+
+        ];
+
+        //--------------------------------------------
+        // Rule Engine
+        //--------------------------------------------
+
+        $candidate =
+            $this->applyMedicalRules(
+                $candidate
+            );
+
+        //--------------------------------------------
+        // Clinical Evidence
+        //--------------------------------------------
+
+        $candidate =
+            $this->buildClinicalEvidence(
+                $candidate
+            );
+
+        //--------------------------------------------
+        // Confidence
+        //--------------------------------------------
+
+        $candidate["confidence"] =
+            $this->calculateConfidence(
+                $candidate
+            );
+
+        return
+
+            $candidate;
+
+    }
+        /**
+     * ======================================================
+     * Patient Risk Evaluation
+     * ======================================================
+     */
+
+    private function hasRiskFactor(
+        string $risk
+    ): bool
+    {
+
+        if ($this->patient === null) {
+            return false;
         }
 
-        if ($this->hasAny($traumaWords)) {
+        $risk = mb_strtolower(trim($risk));
 
-            $score += $this->countMatchedWords($traumaWords) * 3;
+        //--------------------------------------------------
+        // Age
+        //--------------------------------------------------
 
-            $department = "ฉุกเฉิน / อุบัติเหตุ";
-
-            $possibleDisease = "กลุ่มอาการบาดเจ็บหรืออุบัติเหตุ";
-
-            $note = "พบประวัติอุบัติเหตุหรือบาดเจ็บ ควรประเมินเลือดออก กระดูกหัก หรือการกระแทกศีรษะ";
+        if ($risk === "elderly") {
+            return $this->patient->isElderly();
         }
 
-        if ($this->hasAny($allergyWords)) {
-
-            $score += $this->countMatchedWords($allergyWords) * 2;
-
-            $department = "อายุรกรรม / ภูมิแพ้";
-
-            $possibleDisease = "กลุ่มอาการแพ้";
-
-            $note = "พบกลุ่มอาการแพ้ หากมีหน้าบวม ปากบวม หรือหายใจลำบาก ควรรีบพบแพทย์";
+        if ($risk === "child") {
+            return $this->patient->isChild();
         }
 
-        if ($this->hasAny($mentalWords)) {
+        //--------------------------------------------------
+        // Pregnancy
+        //--------------------------------------------------
 
-            $score += $this->countMatchedWords($mentalWords);
-
-            $department = "สุขภาพจิต";
-
-            $possibleDisease = "กลุ่มอาการความเครียดหรือสุขภาพจิต";
-
-            $note = "พบกลุ่มอาการด้านความเครียดหรือสุขภาพจิต ควรประเมินร่วมกับอาการทางกาย";
+        if ($risk === "pregnancy") {
+            return $this->patient->pregnant;
         }
-         
 
-        if ($this->hasAny(["หน้าเบี้ยว","พูดไม่ชัด","แขนขาอ่อนแรง","ชาครึ่งซีก"])) {
-            $score = max($score, 9);
-            $department = "ระบบประสาท";
-            $possibleDisease = "สงสัยภาวะ Stroke หรือระบบประสาทเฉียบพลัน";
-            $note = "พบอาการสำคัญที่อาจเกี่ยวข้องกับโรคหลอดเลือดสมอง ควรเข้ารับการประเมินโดยเร็ว";
+        //--------------------------------------------------
+        // Smoking
+        //--------------------------------------------------
+
+        if ($risk === "smoker") {
+            return $this->patient->smoker;
+        }
+
+        //--------------------------------------------------
+        // Alcohol
+        //--------------------------------------------------
+
+        if ($risk === "alcohol") {
+            return $this->patient->drinker;
+        }
+
+        //--------------------------------------------------
+        // BMI
+        //--------------------------------------------------
+
+        if ($risk === "obesity") {
+            return $this->patient->getBMI() >= 30;
+        }
+
+        if ($risk === "underweight") {
+            $bmi = $this->patient->getBMI();
+
+            return $bmi > 0 && $bmi < 18.5;
+        }
+
+        //--------------------------------------------------
+        // Vital Signs
+        //--------------------------------------------------
+
+        if ($risk === "low_spo2") {
+            return $this->patient->hasLowSpo2();
+        }
+
+        if ($risk === "high_fever") {
+            return $this->patient->hasHighFever();
+        }
+
+        if ($risk === "tachycardia") {
+            return $this->patient->hasTachycardia();
+        }
+
+        //--------------------------------------------------
+        // Chronic Diseases
+        //--------------------------------------------------
+
+        if ($this->patient->hasDisease($risk)) {
+            return true;
+        }
+
+        //--------------------------------------------------
+        // Medical Entity จาก NLP
+        //--------------------------------------------------
+
+        foreach (
+            $this->extraction["medical_entities"] ?? []
+            as
+            $entity
+        ) {
+
+            if (
+                mb_strtolower($entity)
+                ===
+                $risk
+            ) {
+                return true;
+            }
+
+        }
+
+        return false;
+
+    }
+        /**
+     * ======================================================
+     * Medical Rule Engine
+     * ======================================================
+     */
+
+    private function applyMedicalRules(
+        array $candidate
+    ): array
+    {
+        $symptoms =
+            $this->extraction["symptoms"] ?? [];
+
+        $redFlags =
+            $this->extraction["red_flags"] ?? [];
+
+        $severityWords =
+            $this->extraction["severity_words"] ?? [];
+
+        $vitals =
+            $this->extraction["vitals"] ?? [];
+
+        //--------------------------------------------
+        // ACS / Heart Emergency Rules
+        //--------------------------------------------
+
+        if (
+            in_array("เจ็บหน้าอก", $symptoms, true) &&
+            in_array("หายใจไม่ออก", $symptoms, true)
+        ) {
+            $candidate["match_score"] += 15;
+            $candidate["matched_rules"][] =
+                "Chest pain with dyspnea";
         }
 
         if (
-            $this->hasAny(["หายใจไม่ออก","หายใจลำบาก"]) &&
-            $this->hasAny(["ปากเขียว","หน้าซีด","หมดสติ","แน่นหน้าอก"])
+            in_array("เจ็บหน้าอก", $symptoms, true) &&
+            in_array("เหงื่อแตก", $symptoms, true)
         ) {
-            $score = max($score, 9);
-            $department = "ฉุกเฉิน / โรคปอด";
-            $possibleDisease = "กลุ่มอาการหายใจลำบากรุนแรง";
-            $note = "พบอาการหายใจลำบากร่วมกับสัญญาณอันตราย ควรเข้ารับการช่วยเหลือโดยเร็ว";
+            $candidate["match_score"] += 15;
+            $candidate["matched_rules"][] =
+                "Chest pain with sweating";
         }
 
-        if ($this->hasAny(["เลือดออกมาก","แผลลึก","รถชน","ตกจากที่สูง"])) {
-            $score = max($score, 8);
-            $department = "ฉุกเฉิน / อุบัติเหตุ";
-            $possibleDisease = "ภาวะบาดเจ็บที่ต้องประเมินเร่งด่วน";
-            $note = "อาการบาดเจ็บรุนแรงควรได้รับการประเมินโดยบุคลากรทางการแพทย์";
+        if (
+            in_array("เจ็บหน้าอก", $symptoms, true) &&
+            in_array("เจ็บร้าวไปแขน", $symptoms, true)
+        ) {
+            $candidate["match_score"] += 20;
+            $candidate["matched_rules"][] =
+                "Chest pain radiating to arm";
         }
 
-        $score = min($score, 10);
+        //--------------------------------------------
+        // Stroke FAST Rules
+        //--------------------------------------------
 
-        if ($score >= 8) {
-            $urgency = "สูง";
-            $emsRequired = true;
-            $recommendation = "ควรเรียก EMS หรือไปโรงพยาบาลทันที";
-        } elseif ($score >= 5) {
-            $urgency = "ปานกลาง";
-            $recommendation = "ควรพบแพทย์ภายในวันนี้";
-        } elseif ($score >= 2) {
-            $urgency = "ต่ำ";
-            $recommendation = "สามารถสังเกตอาการได้ หากไม่ดีขึ้นควรพบแพทย์";
+        if (
+            in_array("หน้าเบี้ยว", $symptoms, true) &&
+            in_array("พูดไม่ชัด", $symptoms, true)
+        ) {
+            $candidate["match_score"] += 20;
+            $candidate["matched_rules"][] =
+                "FAST positive: face and speech";
+        }
+
+        if (
+            in_array("แขนขาอ่อนแรง", $symptoms, true) &&
+            (
+                in_array("หน้าเบี้ยว", $symptoms, true) ||
+                in_array("พูดไม่ชัด", $symptoms, true)
+            )
+        ) {
+            $candidate["match_score"] += 20;
+            $candidate["matched_rules"][] =
+                "FAST positive: motor weakness";
+        }
+
+        //--------------------------------------------
+        // Respiratory Failure Rules
+        //--------------------------------------------
+
+        if (
+            in_array("หายใจไม่ออก", $symptoms, true) &&
+            in_array("ปากเขียว", $symptoms, true)
+        ) {
+            $candidate["match_score"] += 20;
+            $candidate["matched_rules"][] =
+                "Severe respiratory distress";
+        }
+
+        if (
+            isset($vitals["spo2"]) &&
+            (int)$vitals["spo2"] < 94
+        ) {
+            $candidate["match_score"] += 15;
+            $candidate["matched_rules"][] =
+                "Low SpO2";
+        }
+
+        //--------------------------------------------
+        // Trauma Rules
+        //--------------------------------------------
+
+        if (
+            in_array("รถชน", $symptoms, true) ||
+            in_array("ตกจากที่สูง", $symptoms, true) ||
+            in_array("เลือดออกมาก", $symptoms, true)
+        ) {
+            $candidate["match_score"] += 15;
+            $candidate["matched_rules"][] =
+                "Major trauma pattern";
+        }
+
+        //--------------------------------------------
+        // Sepsis / Infection Rules
+        //--------------------------------------------
+
+        if (
+            in_array("ไข้", $symptoms, true) &&
+            (
+                in_array("ซึม", $redFlags, true) ||
+                in_array("หายใจลำบาก", $symptoms, true)
+            )
+        ) {
+            $candidate["match_score"] += 15;
+            $candidate["matched_rules"][] =
+                "Possible severe infection";
+        }
+
+        if (
+            isset($vitals["temperature"]) &&
+            (float)$vitals["temperature"] >= 38.5
+        ) {
+            $candidate["match_score"] += 10;
+            $candidate["matched_rules"][] =
+                "High fever";
+        }
+
+        //--------------------------------------------
+        // General Red Flag Bonus
+        //--------------------------------------------
+
+        foreach ($redFlags as $flag) {
+            $candidate["match_score"] += 5;
+            $candidate["matched_rules"][] =
+                "Red flag: " . $flag;
+        }
+
+        //--------------------------------------------
+        // Severity Word Bonus
+        //--------------------------------------------
+
+        foreach ($severityWords as $word) {
+            $candidate["match_score"] += 3;
+            $candidate["matched_rules"][] =
+                "Severity word: " . $word;
+        }
+
+        //--------------------------------------------
+        // Patient Context Bonus
+        //--------------------------------------------
+
+        if ($this->patient !== null) {
+
+            if ($this->patient->isElderly()) {
+                $candidate["match_score"] += 5;
+                $candidate["matched_rules"][] =
+                    "Elderly patient";
+            }
+
+            if ($this->patient->isChild()) {
+                $candidate["match_score"] += 3;
+                $candidate["matched_rules"][] =
+                    "Pediatric patient";
+            }
+
+            if ($this->patient->pregnant) {
+                $candidate["match_score"] += 5;
+                $candidate["matched_rules"][] =
+                    "Pregnancy";
+            }
+
+            if ($this->patient->smoker) {
+                $candidate["match_score"] += 2;
+                $candidate["matched_rules"][] =
+                    "Smoking history";
+            }
+
+            if ($this->patient->hasLowSpo2()) {
+                $candidate["match_score"] += 15;
+                $candidate["matched_rules"][] =
+                    "Patient context: low SpO2";
+            }
+
+            if ($this->patient->hasHighFever()) {
+                $candidate["match_score"] += 10;
+                $candidate["matched_rules"][] =
+                    "Patient context: high fever";
+            }
+
+            if ($this->patient->hasTachycardia()) {
+                $candidate["match_score"] += 5;
+                $candidate["matched_rules"][] =
+                    "Patient context: tachycardia";
+            }
+
+        }
+
+        //--------------------------------------------
+        // Limit Score
+        //--------------------------------------------
+
+        if ($candidate["match_score"] > 100) {
+            $candidate["match_score"] = 100;
+        }
+
+        $candidate["matched_rules"] =
+            array_values(
+                array_unique($candidate["matched_rules"])
+            );
+
+        return $candidate;
+    }
+        /**
+     * ======================================================
+     * Clinical Evidence Builder
+     * ======================================================
+     */
+
+    private function buildClinicalEvidence(
+        array $candidate
+    ): array
+    {
+        $evidence = [];
+
+        foreach ($candidate["matched_symptoms"] ?? [] as $symptom) {
+            $evidence[] = [
+                "type" => "symptom",
+                "label" => "Matched Symptom",
+                "value" => $symptom,
+                "weight" => self::SYMPTOM_SCORE
+            ];
+        }
+
+        foreach ($candidate["matched_red_flags"] ?? [] as $flag) {
+            $evidence[] = [
+                "type" => "red_flag",
+                "label" => "Red Flag",
+                "value" => $flag,
+                "weight" => self::RED_FLAG_SCORE
+            ];
+        }
+
+        foreach ($candidate["matched_risk_factors"] ?? [] as $risk) {
+            $evidence[] = [
+                "type" => "risk_factor",
+                "label" => "Risk Factor",
+                "value" => $risk,
+                "weight" => self::RISK_SCORE
+            ];
+        }
+
+        foreach ($candidate["matched_rules"] ?? [] as $rule) {
+            $evidence[] = [
+                "type" => "clinical_rule",
+                "label" => "Clinical Rule",
+                "value" => $rule,
+                "weight" => 15
+            ];
+        }
+
+        if (!empty($this->extraction["duration"])) {
+            $evidence[] = [
+                "type" => "duration",
+                "label" => "Duration",
+                "value" => $this->extraction["duration"],
+                "weight" => 3
+            ];
+        }
+
+        if (!empty($this->extraction["pain_score"])) {
+            $evidence[] = [
+                "type" => "pain_score",
+                "label" => "Pain Score",
+                "value" => $this->extraction["pain_score"],
+                "weight" => 5
+            ];
+        }
+
+        if (!empty($this->extraction["vitals"])) {
+            foreach ($this->extraction["vitals"] as $key => $value) {
+                $evidence[] = [
+                    "type" => "vital_sign",
+                    "label" => $key,
+                    "value" => $value,
+                    "weight" => 5
+                ];
+            }
+        }
+
+        $candidate["clinical_evidence"] = $evidence;
+
+        return $candidate;
+    }
+        /**
+     * ======================================================
+     * Confidence Engine
+     * ======================================================
+     */
+
+    private function calculateConfidence(
+        array $candidate
+    ): int
+    {
+
+        $confidence = 0;
+
+        //------------------------------------------
+        // Symptoms
+        //------------------------------------------
+
+        $symptomCount =
+            count(
+                $candidate["matched_symptoms"]
+            );
+
+        $confidence +=
+            min(
+                40,
+                $symptomCount * 8
+            );
+
+        //------------------------------------------
+        // Red Flag
+        //------------------------------------------
+
+        $redFlagCount =
+            count(
+                $candidate["matched_red_flags"]
+            );
+
+        $confidence +=
+            min(
+                25,
+                $redFlagCount * 12
+            );
+
+        //------------------------------------------
+        // Risk
+        //------------------------------------------
+
+        $riskCount =
+            count(
+                $candidate["matched_risk_factors"]
+            );
+
+        $confidence +=
+            min(
+                10,
+                $riskCount * 3
+            );
+
+        //------------------------------------------
+        // Clinical Rules
+        //------------------------------------------
+
+        $ruleCount =
+            count(
+                $candidate["matched_rules"]
+            );
+
+        $confidence +=
+            min(
+                15,
+                $ruleCount * 5
+            );
+
+        //------------------------------------------
+        // Match Score
+        //------------------------------------------
+
+        $confidence +=
+            intval(
+                $candidate["match_score"] * 0.10
+            );
+
+        //------------------------------------------
+        // Severity
+        //------------------------------------------
+
+        $confidence +=
+            intval(
+                ($candidate["severity_base_score"] ?? 0)
+            );
+
+        //------------------------------------------
+        // Extraction Confidence
+        //------------------------------------------
+
+        if (
+
+            isset(
+                $this->extraction["confidence"]
+            )
+
+        ) {
+
+            $confidence +=
+                intval(
+                    $this->extraction["confidence"] * 0.10
+                );
+
+        }
+
+        //------------------------------------------
+        // Normalize
+        //------------------------------------------
+
+        if ($confidence > 100) {
+            $confidence = 100;
+        }
+
+        if ($confidence < 0) {
+            $confidence = 0;
+        }
+
+        return $confidence;
+
+    }
+
+    /**
+     * ======================================================
+     * Need More Questions ?
+     * ======================================================
+     */
+
+    private function needMoreQuestions(
+        array $candidate
+    ): bool
+    {
+
+        return
+            $candidate["confidence"] < 60;
+
+    }
+
+    /**
+     * ======================================================
+     * Suggested Questions
+     * ======================================================
+     */
+
+    private function buildQuestionList(
+        array $candidate
+    ): array
+    {
+
+        $questions = [];
+
+        if (
+            in_array(
+                "เจ็บหน้าอก",
+                $candidate["matched_symptoms"],
+                true
+            )
+        ) {
+
+            $questions[] =
+                "อาการเจ็บหน้าอกเป็นมานานกี่นาที";
+
+            $questions[] =
+                "เจ็บร้าวไปแขนหรือกรามหรือไม่";
+
+            $questions[] =
+                "มีเหงื่อแตกหรือคลื่นไส้หรือไม่";
+
+        }
+
+        if (
+
+            in_array(
+                "หายใจไม่ออก",
+                $candidate["matched_symptoms"],
+                true
+            )
+
+        ) {
+
+            $questions[] =
+                "สามารถพูดเป็นประโยคยาวได้หรือไม่";
+
+            $questions[] =
+                "ริมฝีปากเขียวหรือไม่";
+
+        }
+
+        if (
+
+            in_array(
+                "ไข้",
+                $candidate["matched_symptoms"],
+                true
+            )
+
+        ) {
+
+            $questions[] =
+                "ไข้มากกว่า 38.5°C หรือไม่";
+
+            $questions[] =
+                "มีหนาวสั่นร่วมด้วยหรือไม่";
+
+        }
+
+        return
+            array_values(
+                array_unique(
+                    $questions
+                )
+            );
+
+    }
+        /**
+     * ======================================================
+     * Build Final Result
+     * ======================================================
+     */
+
+    private function buildResult(
+        string $text
+    ): array
+    {
+        $topDiagnosis =
+            $this->candidates[0] ?? null;
+
+        $differentialDiagnosis =
+            array_slice(
+                $this->candidates,
+                0,
+                5
+            );
+
+        $requiresMoreQuestions = false;
+        $followUpQuestions = [];
+
+        if ($topDiagnosis !== null) {
+
+            $requiresMoreQuestions =
+                $this->needMoreQuestions(
+                    $topDiagnosis
+                );
+
+            $followUpQuestions =
+                $this->buildQuestionList(
+                    $topDiagnosis
+                );
+
         }
 
         return [
+
             "success" => true,
-            "symptom_name" => $possibleDisease,
-            "urgency_level" => $urgency,
-            "recommendation" => $recommendation,
-            "department" => $department,
-            "ems_required" => $emsRequired,
-            "severity_score" => $score,
-            "ai_note" => $note
+
+            "engine" => "Reasoning Engine V2",
+
+            "input_text" => $text,
+
+            "extraction" => $this->extraction,
+
+            "top_diagnosis" => $topDiagnosis,
+
+            "differential_diagnosis" =>
+                $differentialDiagnosis,
+
+            "candidate_count" =>
+                count($this->candidates),
+
+            "requires_more_questions" =>
+                $requiresMoreQuestions,
+
+            "follow_up_questions" =>
+                $followUpQuestions,
+
+            "ai_note" =>
+                "วิเคราะห์โดย Open Hospital Medical Reasoning AI V2"
+
         ];
     }
+        /**
+     * ======================================================
+     * Utility : Get Candidate By Disease ID
+     * ======================================================
+     */
 
-    private function hasAny(array $words): bool
+    private function findCandidateByDiseaseId(
+        string $diseaseId
+    ): ?array
     {
-        foreach ($words as $word) {
-            if (mb_strpos($this->text, $word) !== false) {
-                return true;
+
+        foreach ($this->candidates as $candidate) {
+
+            if (
+                ($candidate["disease_id"] ?? "")
+                ===
+                $diseaseId
+            ) {
+                return $candidate;
             }
+
         }
-        return false;
+
+        return null;
+
     }
 
-    private function countMatchedWords(array $words): int
+    /**
+     * ======================================================
+     * Utility : Check Red Flag
+     * ======================================================
+     */
+
+    private function hasRedFlag(): bool
     {
-        $count = 0;
 
-        foreach ($words as $word) {
-            if (mb_strpos($this->text, $word) !== false) {
-                $count++;
-            }
-        }
+        return !empty(
+            $this->extraction["red_flags"] ?? []
+        );
 
-        return $count;
     }
+
+    /**
+     * ======================================================
+     * Utility : Get Extraction
+     * ======================================================
+     */
+
+    public function getExtraction(): array
+    {
+
+        return $this->extraction;
+
+    }
+
+    /**
+     * ======================================================
+     * Utility : Get Candidates
+     * ======================================================
+     */
+
+    public function getCandidates(): array
+    {
+
+        return $this->candidates;
+
+    }
+
+    /**
+     * ======================================================
+     * Utility : Get Knowledge
+     * ======================================================
+     */
+
+    public function getKnowledge(): array
+    {
+
+        return $this->knowledge;
+
+    }
+
+    /**
+     * ======================================================
+     * Utility : Reset Engine
+     * ======================================================
+     */
+
+    public function reset(): void
+    {
+
+        $this->candidates = [];
+
+        $this->extraction = [];
+
+        $this->patient = null;
+
+    }
+
 }
