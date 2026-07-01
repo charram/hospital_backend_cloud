@@ -17,82 +17,124 @@ if (!$session_id || !$ems_id) {
 }
 
 // ================== 🔥 FCM FUNCTION ==================
-function sendFCM($token, $title, $body, $session_id) {
+function sendFCM($token, $title, $body, $session_id)
+{
+    try {
 
-  $serviceAccount = json_decode(file_get_contents(__DIR__ . "/../firebase.json"), true);
-  $now = time();
+        $file = __DIR__ . "/../firebase.json";
 
-  $header = ["alg"=>"RS256","typ"=>"JWT"];
-  $payload = [
-    "iss"=>$serviceAccount["client_email"],
-    "scope"=>"https://www.googleapis.com/auth/firebase.messaging",
-    "aud"=>"https://oauth2.googleapis.com/token",
-    "iat"=>$now,
-    "exp"=>$now+3600
-  ];
+        if (!file_exists($file)) {
+            throw new Exception("firebase.json not found");
+        }
 
-  $base64Header = rtrim(strtr(base64_encode(json_encode($header)),'+/','-_'),'=');
-  $base64Payload = rtrim(strtr(base64_encode(json_encode($payload)),'+/','-_'),'=');
+        $serviceAccount = json_decode(file_get_contents($file), true);
 
-  openssl_sign(
-    $base64Header.".".$base64Payload,
-    $signature,
-    $serviceAccount["private_key"],
-    "SHA256"
-  );
+        if (!$serviceAccount) {
+            throw new Exception("Invalid firebase.json");
+        }
 
-  $jwt = $base64Header.".".$base64Payload.".".rtrim(strtr(base64_encode($signature),'+/','-_'),'=');
+        $now = time();
 
-  // 🔥 ขอ access token
-  $ch = curl_init("https://oauth2.googleapis.com/token");
-  curl_setopt($ch, CURLOPT_POST, true);
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-  curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/x-www-form-urlencoded"]);
-  curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-    "grant_type"=>"urn:ietf:params:oauth:grant-type:jwt-bearer",
-    "assertion"=>$jwt
-  ]));
+        $header = ["alg"=>"RS256","typ"=>"JWT"];
+        $payload = [
+            "iss"=>$serviceAccount["client_email"],
+            "scope"=>"https://www.googleapis.com/auth/firebase.messaging",
+            "aud"=>"https://oauth2.googleapis.com/token",
+            "iat"=>$now,
+            "exp"=>$now+3600
+        ];
 
-  $res = curl_exec($ch);
-  curl_close($ch);
+        $base64Header = rtrim(strtr(base64_encode(json_encode($header)), '+/', '-_'), '=');
+        $base64Payload = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
 
-  $data = json_decode($res,true);
-  $accessToken = $data["access_token"] ?? null;
+        if (!openssl_sign(
+            $base64Header . "." . $base64Payload,
+            $signature,
+            $serviceAccount["private_key"],
+            "SHA256"
+        )) {
+            throw new Exception("openssl_sign failed");
+        }
 
-  if (!$accessToken) return null;
+        $jwt = $base64Header . "." . $base64Payload . "." .
+            rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
 
-  $projectId = $serviceAccount["project_id"];
+        $ch = curl_init("https://oauth2.googleapis.com/token");
 
-  $message = [
-    "message"=>[
-      "token"=>$token,
-      "notification"=>[
-        "title"=>$title,
-        "body"=>$body
-      ],
-      "data"=>[
-        "type"=>"new_job",
-        "session_id"=>(string)$session_id
-      ],
-      "android"=>[
-        "priority"=>"high"
-      ]
-    ]
-  ];
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/x-www-form-urlencoded"
+            ],
+            CURLOPT_POSTFIELDS => http_build_query([
+                "grant_type" => "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion" => $jwt
+            ])
+        ]);
 
-  $ch = curl_init("https://fcm.googleapis.com/v1/projects/$projectId/messages:send");
-  curl_setopt($ch, CURLOPT_POST,true);
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER,true);
-  curl_setopt($ch, CURLOPT_HTTPHEADER,[
-    "Authorization: Bearer $accessToken",
-    "Content-Type: application/json"
-  ]);
-  curl_setopt($ch, CURLOPT_POSTFIELDS,json_encode($message));
+        $res = curl_exec($ch);
 
-  $res = curl_exec($ch);
-  curl_close($ch);
+        if ($res === false) {
+            throw new Exception(curl_error($ch));
+        }
 
-  return $res;
+        curl_close($ch);
+
+        $data = json_decode($res, true);
+
+        if (empty($data["access_token"])) {
+            throw new Exception("Cannot get access token");
+        }
+
+        $accessToken = $data["access_token"];
+
+        $message = [
+            "message" => [
+                "token" => $token,
+                "notification" => [
+                    "title" => $title,
+                    "body" => $body
+                ],
+                "data" => [
+                    "type" => "new_job",
+                    "session_id" => (string)$session_id
+                ]
+            ]
+        ];
+
+        $url = "https://fcm.googleapis.com/v1/projects/" .
+            $serviceAccount["project_id"] .
+            "/messages:send";
+
+        $ch = curl_init($url);
+
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Authorization: Bearer $accessToken",
+                "Content-Type: application/json"
+            ],
+            CURLOPT_POSTFIELDS => json_encode($message)
+        ]);
+
+        $res = curl_exec($ch);
+
+        if ($res === false) {
+            throw new Exception(curl_error($ch));
+        }
+
+        curl_close($ch);
+
+        return $res;
+
+    } catch (Throwable $e) {
+
+        error_log("FCM ERROR : " . $e->getMessage());
+
+        return null;
+    }
 }
 
 // ================== 🔥 TRANSACTION ==================
@@ -116,32 +158,44 @@ if ($result && pg_affected_rows($result) > 0) {
 
   pg_query($conn, "COMMIT");
 
-  // 🔥 ยิง FCM แค่ตอน assign สำเร็จ
-  $q = pg_query_params($conn,
+// 🔥 ยิง FCM แค่ตอน assign สำเร็จ
+$q = pg_query_params(
+    $conn,
     "SELECT fcm_token FROM ems_users WHERE id = $1",
     [$ems_id]
-  );
+);
 
-  $row = pg_fetch_assoc($q);
-  $ems_token = $row["fcm_token"] ?? null;
+$row = pg_fetch_assoc($q);
+$ems_token = $row["fcm_token"] ?? null;
 
-  $fcmResult = null;
+$fcmResult = null;
 
-  if ($ems_token) {
-    $fcmResult = sendFCM(
-      $ems_token,
-      "🚨 มีเคสใหม่",
-      "มีผู้ป่วยรอความช่วยเหลือ",
-      $session_id
-    );
-  }
+try {
 
-  echo json_encode([
+    if (!empty($ems_token)) {
+
+        $fcmResult = sendFCM(
+            $ems_token,
+            "🚨 มีเคสใหม่",
+            "มีผู้ป่วยรอความช่วยเหลือ",
+            $session_id
+        );
+
+    }
+
+} catch (Throwable $e) {
+
+    error_log("FCM ERROR : " . $e->getMessage());
+
+    $fcmResult = "FAILED";
+}
+
+echo json_encode([
     "success" => true,
-    "session_id" => strval($session_id),
-    "ems_id" => strval($ems_id),
+    "session_id" => (string)$session_id,
+    "ems_id" => (string)$ems_id,
     "fcm_result" => $fcmResult
-  ]);
+]);
 
 } else {
 
