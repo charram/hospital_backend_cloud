@@ -7,17 +7,19 @@ require_once __DIR__ . "/db_connect.php";
 
 $title = trim($_GET["title"] ?? "");
 
-if ($title == "") {
+if ($title === "") {
     echo json_encode([
         "success" => false,
         "message" => "missing title"
-    ]);
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
+$keyword = "%" . $title . "%";
+
 $sql = "
 
-SELECT DISTINCT
+SELECT
     hc.id,
     hc.hospital_id,
     hc.image_path,
@@ -33,35 +35,50 @@ SELECT DISTINCT
 FROM hospital_card hc
 
 INNER JOIN hospitals h
-ON hc.hospital_id = h.id
+ON h.id = hc.hospital_id
 
-INNER JOIN (
+WHERE
+h.status='approved'
 
-    SELECT hospital_id
-    FROM brain_center_uploads
-    WHERE upload_type='disease'
-    AND (
-        title ILIKE $1
-        OR description ILIKE $1
-        OR meta::text ILIKE $1
+AND (
+
+    EXISTS (
+
+        SELECT 1
+
+        FROM brain_center_uploads b
+
+        WHERE
+        b.hospital_id = hc.hospital_id
+        AND b.upload_type='disease'
+        AND (
+            b.title ILIKE $1
+            OR b.description ILIKE $1
+            OR b.meta::text ILIKE $1
+        )
+
     )
 
-    UNION
+    OR
 
-    SELECT hospital_id
-    FROM cancer_center
-    WHERE upload_type='disease'
-    AND (
-        title ILIKE $1
-        OR description ILIKE $1
-        OR meta::text ILIKE $1
+    EXISTS (
+
+        SELECT 1
+
+        FROM cancer_center c
+
+        WHERE
+        c.hospital_id = hc.hospital_id
+        AND c.upload_type='disease'
+        AND (
+            c.title ILIKE $1
+            OR c.description ILIKE $1
+            OR c.meta::text ILIKE $1
+        )
+
     )
 
-) d
-
-ON d.hospital_id = hc.hospital_id
-
-WHERE h.status='approved'
+)
 
 ORDER BY hc.id DESC
 
@@ -70,31 +87,35 @@ ORDER BY hc.id DESC
 $res = pg_query_params(
     $conn,
     $sql,
-    [
-        "%".$title."%"
-    ]
+    [$keyword]
 );
 
-if(!$res){
+if (!$res) {
 
     echo json_encode([
-        "success"=>false,
-        "message"=>pg_last_error($conn)
-    ]);
+        "success" => false,
+        "message" => pg_last_error($conn)
+    ], JSON_UNESCAPED_UNICODE);
 
     exit;
 }
 
-$data=[];
+$data = [];
 
-while($row=pg_fetch_assoc($res)){
+while ($row = pg_fetch_assoc($res)) {
 
-    $data[]=$row;
+    foreach ($row as $k => $v) {
+        if ($v !== null) {
+            $row[$k] = (string)$v;
+        }
+    }
 
+    $data[] = $row;
 }
 
 echo json_encode([
-    "success"=>true,
-    "count"=>count($data),
-    "cards"=>$data
-],JSON_UNESCAPED_UNICODE);
+    "success" => true,
+    "keyword" => $title,
+    "count" => count($data),
+    "cards" => $data
+], JSON_UNESCAPED_UNICODE);
