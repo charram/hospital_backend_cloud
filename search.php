@@ -1,78 +1,189 @@
 <?php
+
+header("Access-Control-Allow-Origin: *");
+header("Content-Type: application/json; charset=UTF-8");
+
 require_once "db_connect.php";
 
 $q = trim($_GET["q"] ?? "");
 
 $result = [
-  "hospitals" => [],
-  "diseases" => [],
-   "products" => [],
+    "hospitals" => [],
+    "diseases"  => [],
+    "products"  => [],
 ];
 
 if ($q !== "") {
 
-  // ---------- hospitals ----------
-  $sql1 = "
-    SELECT 
-      h.id,
-      h.name,
-      c.image_path
+    $keyword = "%" . $q . "%";
+
+    // ==========================================
+    // HOSPITALS
+    // ==========================================
+
+    $sql1 = "
+    SELECT
+        h.id,
+        h.name,
+        c.image_path
     FROM hospitals h
-    LEFT JOIN hospital_card c ON c.hospital_id = h.id
-    WHERE LOWER(h.name) LIKE LOWER($1)
-      AND h.status = 'approved'
+    LEFT JOIN hospital_card c
+        ON c.hospital_id = h.id
+    WHERE
+        h.status='approved'
+        AND h.name ILIKE $1
     ORDER BY c.id DESC
     LIMIT 10
-  ";
-  $res1 = pg_query_params($conn, $sql1, ["%$q%"]);
+    ";
 
-  while ($row = pg_fetch_assoc($res1)) {
-    $result["hospitals"][] = $row;
-  }
+    $res1 = pg_query_params(
+        $conn,
+        $sql1,
+        [$keyword]
+    );
 
-  // ---------- diseases ----------
- // ---------- diseases ----------
-$sql2 = "
-  SELECT 
-    d.id,
-    d.title,
-    d.hospital_id,
-    h.name AS hospital_name,
-    d.image_path
-  FROM hospital_diseases d
-  JOIN hospitals h ON h.id = d.hospital_id
-  WHERE LOWER(d.title) LIKE LOWER($1)
-  LIMIT 10
-";
-// ---------- products ----------
-$sql3 = "
-  SELECT 
-    p.id,
-    p.title,
-    p.description,
-    p.image_path,
-    p.price
-  FROM products p
-  WHERE 
-    LOWER(p.title) LIKE LOWER($1)
-    OR LOWER(p.description) LIKE LOWER($1)
-  LIMIT 10
-";
+    while ($row = pg_fetch_assoc($res1)) {
+        $result["hospitals"][] = $row;
+    }
 
+    // ==========================================
+    // DISEASES
+    // ==========================================
 
-$res3 = pg_query_params($conn, $sql3, ["%$q%"]);
+    $sql2 = "
 
-while ($row = pg_fetch_assoc($res3)) {
-  $result["products"][] = $row;
+    SELECT
+        'brain' AS category,
+        hospital_id,
+        title,
+        description,
+        image_path,
+        upload_type
+    FROM brain_center_uploads
+    WHERE
+        upload_type='disease'
+        AND (
+            title ILIKE $1
+            OR description ILIKE $1
+            OR meta::text ILIKE $1
+        )
+
+    UNION ALL
+
+    SELECT
+        'cancer' AS category,
+        hospital_id,
+        title,
+        description,
+        image_path,
+        upload_type
+    FROM cancer_center
+    WHERE
+        upload_type='disease'
+        AND (
+            title ILIKE $1
+            OR description ILIKE $1
+            OR meta::text ILIKE $1
+        )
+
+    UNION ALL
+
+    SELECT
+        'lung' AS category,
+        hospital_id,
+        title,
+        description,
+        image_path,
+        upload_type
+    FROM lung_center
+    WHERE
+        upload_type='disease'
+        AND (
+            title ILIKE $1
+            OR description ILIKE $1
+            OR meta::text ILIKE $1
+        )
+
+    UNION ALL
+
+    SELECT
+        'heart' AS category,
+        hospital_id,
+        title,
+        description,
+        image_path,
+        upload_type
+    FROM heart_center
+    WHERE
+        upload_type='disease'
+        AND (
+            title ILIKE $1
+            OR description ILIKE $1
+            OR meta::text ILIKE $1
+        )
+
+    UNION ALL
+
+    SELECT
+        'kidney' AS category,
+        hospital_id,
+        title,
+        description,
+        image_path,
+        upload_type
+    FROM kidney_center
+    WHERE
+        upload_type='disease'
+        AND (
+            title ILIKE $1
+            OR description ILIKE $1
+            OR meta::text ILIKE $1
+        )
+
+    LIMIT 20
+
+    ";
+
+    $res2 = pg_query_params(
+        $conn,
+        $sql2,
+        [$keyword]
+    );
+
+    while ($row = pg_fetch_assoc($res2)) {
+        $result["diseases"][] = $row;
+    }
+
+    // ==========================================
+    // PRODUCTS
+    // ==========================================
+
+    $sql3 = "
+    SELECT
+        id,
+        title,
+        description,
+        image_path,
+        price
+    FROM products
+    WHERE
+        title ILIKE $1
+        OR description ILIKE $1
+    LIMIT 10
+    ";
+
+    $res3 = pg_query_params(
+        $conn,
+        $sql3,
+        [$keyword]
+    );
+
+    while ($row = pg_fetch_assoc($res3)) {
+        $result["products"][] = $row;
+    }
 }
 
-
-
-  $res2 = pg_query_params($conn, $sql2, ["%$q%"]);
-
-  while ($row = pg_fetch_assoc($res2)) {
-    $result["diseases"][] = $row;
-  }
-}
-
-echo json_encode($result, JSON_UNESCAPED_UNICODE);
+echo json_encode(
+    $result,
+    JSON_UNESCAPED_UNICODE
+);
