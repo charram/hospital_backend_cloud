@@ -48,39 +48,36 @@ if ($q != "") {
 
     $sql2 = "
 
-    SELECT
-        'brain' AS category,
-        hospital_id,
-        title,
-        description,
-        image_path,
-        upload_type
-    FROM brain_center_uploads
-    WHERE
-        upload_type='disease'
-        AND (
-            title ILIKE $1
-            OR description ILIKE $1
-            OR meta::text ILIKE $1
-        )
+    SELECT *
+    FROM (
 
-    UNION ALL
+        SELECT
+            'brain' AS category,
+            hospital_id,
+            title,
+            description,
+            image_path,
+            upload_type
+        FROM brain_center_uploads
+        WHERE upload_type='disease'
 
-    SELECT
-        'cancer' AS category,
-        hospital_id,
-        title,
-        description,
-        image_path,
-        upload_type
-    FROM cancer_center
+        UNION ALL
+
+        SELECT
+            'cancer' AS category,
+            hospital_id,
+            title,
+            description,
+            image_path,
+            upload_type
+        FROM cancer_center
+        WHERE upload_type='disease'
+
+    ) diseases
+
     WHERE
-        upload_type='disease'
-        AND (
-            title ILIKE $1
-            OR description ILIKE $1
-            OR meta::text ILIKE $1
-        )
+        title ILIKE $1
+        OR description ILIKE $1
 
     ORDER BY title
     LIMIT 20
