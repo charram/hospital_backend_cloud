@@ -1,6 +1,6 @@
 <?php
 header("Content-Type: application/json; charset=utf-8");
-require_once __DIR__ . "/db_connect.php";
+require_once __DIR__ . "db_connect.php";
 
 $keyword = trim($_GET['q'] ?? '');
 $hospital_id = $_GET['hospital_id'] ?? '';
