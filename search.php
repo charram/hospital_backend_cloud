@@ -14,6 +14,29 @@ if ($keyword == '') {
 }
 
 $like = "%{$keyword}%";
+$hospitals = [];
+
+$sqlHospitals = "
+SELECT
+    h.id,
+    h.name,
+    c.image_path
+FROM hospitals h
+LEFT JOIN hospital_card c ON c.hospital_id = h.id
+WHERE
+    h.status = 'approved'
+    AND h.name ILIKE $1
+ORDER BY c.id DESC
+LIMIT 10
+";
+
+$resHospitals = pg_query_params($conn, $sqlHospitals, [$like]);
+
+if ($resHospitals) {
+    while ($row = pg_fetch_assoc($resHospitals)) {
+        $hospitals[] = $row;
+    }
+}
 
 $sql = "
 
@@ -123,9 +146,10 @@ while($row=pg_fetch_assoc($res)){
 }
 
 echo json_encode([
-    "success"=>true,
-    "count"=>count($data),
-    "data"=>$data
-],JSON_UNESCAPED_UNICODE);
+    "success" => true,
+    "count" => count($data),
+    "hospitals" => $hospitals,
+    "data" => $data
+], JSON_UNESCAPED_UNICODE);
 
 pg_close($conn);
