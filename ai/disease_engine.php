@@ -2508,20 +2508,46 @@ class DiseaseEngine
         // ==========================
         // Severity Bonus
         // ==========================
-        $score += (($disease["severity"] ?? 0) * 2);
+   $keywordMatched = false;
 
-        // ==========================
-        // Clinical Question Score
-        // ==========================
-        $score += $this->scoreByClinicalAnswers(
-            $disease,
-            $answers
-        );
+// Keyword Score
+foreach ($disease["keywords"] as $keyword) {
 
-        if ($score <= 0) {
-            continue;
-        }
+    if (mb_strpos(
+        $text,
+        mb_strtolower($keyword, "UTF-8")
+    ) !== false) {
 
+        $score += 10;
+        $keywordMatched = true;
+    }
+}
+
+// ถ้าไม่ตรง keyword เลย ข้ามโรคนี้ทันที
+if (!$keywordMatched) {
+    continue;
+}
+
+// Red Flag
+foreach ($disease["red_flags"] ?? [] as $flag) {
+
+    if (mb_strpos(
+        $text,
+        mb_strtolower($flag, "UTF-8")
+    ) !== false) {
+
+        $score += 20;
+    }
+}
+
+// Severity จะถูกบวกเฉพาะโรคที่ match keyword แล้ว
+$score += ($disease["severity"] ?? 0) * 2;
+
+// Clinical Question
+$score += $this->scoreByClinicalAnswers(
+    $disease,
+    $answers
+);
         $disease["confidence"] = min(100, $score);
 
         $results[] = $disease;
